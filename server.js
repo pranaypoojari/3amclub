@@ -116,24 +116,29 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-const dataDir = path.join(__dirname, '.mongodb-data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+const dataDir = process.env.VERCEL
+  ? path.join('/tmp', '.mongodb-data')
+  : path.join(__dirname, '.mongodb-data');
+try {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+} catch (_) {}
 
 async function connectDB() {
+  if (mongoose.connection.readyState === 1) return;
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/the3amclub';
   try {
     console.log('Attempting MongoDB connection...');
     await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2000
+      serverSelectionTimeoutMS: process.env.MONGODB_URI ? 8000 : 2000
     });
     console.log('Connected to MongoDB instance');
   } catch (err) {
-    console.log('Starting embedded MongoDB Server on port 27017 for MongoDB Compass...');
+    console.log('Starting embedded MongoDB Server...');
     const mongoServer = await MongoMemoryServer.create({
       instance: {
-        port: 27017,
+        ...(process.env.VERCEL ? {} : { port: 27017 }),
         dbName: 'the3amclub',
         dbPath: dataDir,
         storageEngine: 'wiredTiger'
@@ -144,19 +149,30 @@ async function connectDB() {
     });
     const uri = mongoServer.getUri();
     await mongoose.connect(uri + 'the3amclub');
-    console.log('Connected to embedded MongoDB Server at mongodb://127.0.0.1:27017/the3amclub');
+    console.log('Connected to embedded MongoDB Server');
   }
 }
 
-async function boot() {
-  await connectDB();
-  await seedData();
-  console.log('Database seeded.');
+let bootPromise = null;
+function ensureBooted() {
+  if (!bootPromise) {
+    bootPromise = (async () => {
+      await connectDB();
+      await seedData();
+      console.log('Database seeded.');
+    })().catch(err => {
+      console.error('Boot error:', err);
+      bootPromise = null;
+    });
+  }
+  return bootPromise;
 }
 
-boot().catch(err => {
-  console.error('Boot failed:', err);
-  process.exit(1);
+ensureBooted();
+
+app.use('/api', async (req, res, next) => {
+  await ensureBooted();
+  next();
 });
 
 
@@ -1162,9 +1178,12 @@ app.get('*', (req, res) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+let server = null;
+if (!process.env.VERCEL) {
+  server = app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
 function gracefulShutdown(signal) {
   console.log(`Received ${signal}. Closing server gracefully...`);
@@ -1172,10 +1191,12 @@ function gracefulShutdown(signal) {
     try { c.res.end(); } catch (_) {}
   });
   clients = [];
-  server.close(async () => {
-    try { await mongoose.connection.close(); } catch (_) {}
-    process.exit(0);
-  });
+  if (server) {
+    server.close(async () => {
+      try { await mongoose.connection.close(); } catch (_) {}
+      process.exit(0);
+    });
+  }
 }
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -1183,5 +1204,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Promise Rejection:', reason);
 });
+
+module.exports = app;
 
 
