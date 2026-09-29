@@ -1,0 +1,19 @@
+{
+  "name": "the3amclub",
+  "version": "1.0.0",
+  "description": "A dark-mode social radar that only opens between 11 PM and 5 AM for Night Owls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed": "node seed/seedNightOwls.js"
+  },
+  "keywords": ["night-owl", "3am", "social", "map", "lofi"],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "mongoose": "^8.8.0",
+    "mongodb-memory-server-core": "^10.1.0"
+  }
+}

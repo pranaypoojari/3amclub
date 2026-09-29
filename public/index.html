@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>The 3AM Club — Nightlife Social Radar</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  DAYTIME VAULT SCREEN (5:00 AM – 11:00 PM)                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="vault-screen" class="screen">
+    <canvas id="ghost-canvas"></canvas>
+    <div class="vault-content">
+      <div class="logo">🎃 THE 3AM CLUB</div>
+      <div class="subtitle">☠️ No Sleep Till Sunrise ☠️</div>
+      <div class="countdown-container">
+        <div id="vault-countdown">--:--:--</div>
+        <div class="countdown-label">UNTIL GATES OPEN</div>
+      </div>
+      
+      <div class="rsvp-card">
+        <h3>Reserve Your Spot Tonight</h3>
+        <form id="rsvp-form">
+          <input type="text" id="rsvp-alias" placeholder="Your @Alias" required>
+          <input type="text" id="rsvp-city" placeholder="City (e.g. Thane, Mumbai)" required>
+          <input type="text" id="rsvp-goal" placeholder="Tonight's vibe or goal?" required>
+          <button type="submit" class="btn-primary w-100">🌙 Lock In RSVP</button>
+        </form>
+      </div>
+      
+      <button id="override-btn" class="btn-override">🌊 Dive In Now (3AM Override)</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  INSTAGRAM-STYLE 5-TAB SWIPEABLE 3AM CLUB PORTAL            -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="club-screen" class="screen active">
+    
+    <!-- Top Compact Header -->
+    <header class="club-header">
+      <div class="header-left">
+        <div class="logo-small">🎃 THE 3AM CLUB</div>
+        <div class="online-status-badge" title="Active Night Owls Online">
+          <span class="live-pulse-dot"></span>
+          <span id="online-count-val">100</span>
+          <span class="online-status-text">Online</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="btn-rain" class="header-pill-btn" title="Midnight Rain Ambience">🌧️ Rain</button>
+        <button id="btn-lofi" class="header-pill-btn" title="3AM Lofi Radio">🎵 Lofi</button>
+        <div class="live-clock" id="live-clock">03:00:00</div>
+        <button id="locate-me-btn" class="btn-icon" title="Center on My GPS">📍</button>
+        <button id="lock-btn" class="btn-icon" title="View Countdown Vault">🔒</button>
+      </div>
+    </header>
+
+    <!-- Swipeable 5-Section Viewport -->
+    <main class="swipe-viewport" id="swipe-viewport">
+      <div class="swipe-track" id="swipe-track">
+
+        <!-- ─────────────────────────────────────────────────────── -->
+        <!-- SECTION 0: 🏠 HOME (Instagram-Style Stories + Feeds)    -->
+        <!-- ─────────────────────────────────────────────────────── -->
+        <section class="app-page active" id="page-home" data-index="0">
+          <div class="page-scroll-inner">
+            
+            <!-- Instagram-Style Top Stories / Mode Filter Bar -->
+            <div class="insta-stories-bar" id="insta-stories-bar">
+              <div class="story-ring active" data-feed-mode="all">
+                <div class="story-avatar-wrap"><span class="story-emoji">🔥</span></div>
+                <span class="story-label">Nearby All</span>
+              </div>
+              <div class="story-ring" data-feed-mode="rides">
+                <div class="story-avatar-wrap"><span class="story-emoji">🚗</span></div>
+                <span class="story-label">Night Rides</span>
+              </div>
+              <div class="story-ring" data-feed-mode="hangouts">
+                <div class="story-avatar-wrap"><span class="story-emoji">🎯</span></div>
+                <span class="story-label">Hangouts</span>
+              </div>
+              <div class="story-ring" data-feed-mode="wall">
+                <div class="story-avatar-wrap"><span class="story-emoji">💭</span></div>
+                <span class="story-label">3AM Wall</span>
+              </div>
+              <!-- Dynamic nearby owl rings injected here by JS -->
+              <div id="dynamic-story-rings" style="display:flex;gap:12px;"></div>
+            </div>
+
+            <!-- Quick 3AM Thought / Status Bar (Like IG/Threads Top Composer) -->
+            <form id="wall-form" class="quick-compose-bar">
+              <input type="text" id="wall-input" placeholder="Drop a 3 AM thought or status..." maxlength="140" required>
+              <button type="submit" class="btn-primary" style="padding:7px 14px;white-space:nowrap;">Post</button>
+            </form>
+
+            <!-- Unified Instagram-Style Feed Container -->
+            <div id="home-unified-feed" class="feed-list"></div>
+          </div>
+        </section>
+
+        <!-- ─────────────────────────────────────────────────────── -->
+        <!-- SECTION 1: 🔍 SEARCH & MAP RADAR (Main Map + Search Bar)-->
+        <!-- ─────────────────────────────────────────────────────── -->
+        <section class="app-page" id="page-search" data-index="1">
+          <div class="search-map-stage">
+            
+            <!-- Floating Top Search Overlay + Expandable Legend -->
+            <div class="map-top-search-overlay">
+              <div class="search-bar-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="map-user-search" placeholder="Search any @user, #interest (coding, music), or area (Thane, Bandra)..." autocomplete="off">
+                <button type="button" id="clear-search-btn" class="clear-search-btn hidden">✕</button>
+              </div>
+
+              <!-- Live Search Results Dropdown -->
+              <div class="search-results-dropdown hidden" id="search-results-dropdown"></div>
+
+              <!-- Top Row Pills: Expandable Legend & Locate Me -->
+              <div class="map-overlay-pills-row">
+                <div class="map-legend-wrapper" id="map-legend-wrapper">
+                  <button type="button" class="legend-toggle-btn" id="legend-toggle-btn">
+                    <span>🎯 Filter Radar: <b id="active-legend-label">🌐 All Owls (100)</b></span>
+                    <span id="legend-chevron">▾</span>
+                  </button>
+                  <div class="legend-dropdown hidden" id="legend-dropdown">
+                    <div class="legend-dropdown-title">Click to Filter Map & Feed</div>
+                    <button type="button" class="legend-opt active" data-filter="all">
+                      <span class="legend-dot" style="background:#fff;box-shadow:0 0 8px #fff;"></span>
+                      <span>🌐 Show All Night Owls</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="nearby">
+                      <span class="legend-dot" style="background:#00e5ff;box-shadow:0 0 8px #00e5ff;"></span>
+                      <span>📍 Nearby Me (&lt; 15 km)</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="grind">
+                      <span class="legend-dot grind"></span>
+                      <span>💻 Grind / Coding</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="exam">
+                      <span class="legend-dot exam"></span>
+                      <span>📚 Exam Survival</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="vibe">
+                      <span class="legend-dot vibe"></span>
+                      <span>🎧 Vibe / Chill</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="gaming">
+                      <span class="legend-dot gaming"></span>
+                      <span>🎮 Gaming</span>
+                    </button>
+                    <button type="button" class="legend-opt" data-filter="ride">
+                      <span class="legend-dot" style="background:#ffab00;box-shadow:0 0 8px #ffab00;"></span>
+                      <span>🚗 Down for Late Night Ride</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button type="button" class="legend-toggle-btn" id="map-gps-pill">
+                  📍 My Area (Thane)
+                </button>
+              </div>
+            </div>
+
+            <!-- Full-Screen Interactive Leaflet Map -->
+            <div id="map"></div>
+          </div>
+        </section>
+
+        <!-- ─────────────────────────────────────────────────────── -->
+        <!-- SECTION 2: 🌊 DIVE IN (1-Screen Compact + Max-5 Select) -->
+        <!-- ─────────────────────────────────────────────────────── -->
+        <section class="app-page" id="page-dive" data-index="2">
+          <div class="page-scroll-inner dive-compact-page">
+
+            <!-- Mode Sub-Switcher right at the top -->
+            <div class="dive-mode-tabs compact-dive-tabs">
+              <button type="button" class="dive-sub-btn active" data-dive="broadcast">⚡ Broadcast Vibe</button>
+              <button type="button" class="dive-sub-btn" data-dive="ride">🚗 Night Ride</button>
+              <button type="button" class="dive-sub-btn" data-dive="hangout">🎯 Start Hangout</button>
+            </div>
+
+            <!-- Sub-Panel 1: Broadcast My Vibe (Fits 100% on 1 Screen) -->
+            <div class="dive-sub-pane active" id="dive-broadcast">
+              <div id="checkin-form-container" class="feed-card compact-dive-card">
+                <form id="checkin-form">
+                  <!-- Row 1: Single-line Horizontal Scrollable Persona Strip -->
+                  <div class="compact-field-group">
+                    <div class="compact-label-row">
+                      <span>Midnight Persona</span>
+                      <span class="text-muted" style="font-size:0.65rem;">Swipe & tap →</span>
+                    </div>
+                    <div class="avatar-picker horizontal-avatar-strip" id="avatar-picker"></div>
+                    <input type="hidden" id="checkin-avatar" value="🦉">
+                  </div>
+
+                  <!-- Row 2: Alias + Pronouns + Visibility -->
+                  <div class="compact-grid-3">
+                    <input type="text" id="checkin-alias" placeholder="@Alias" maxlength="24" required>
+                    <input type="text" id="checkin-pronouns" placeholder="he/she/they">
+                    <select id="checkin-profile-type" title="Account Visibility">
+                      <option value="open">🔓 Open</option>
+                      <option value="closed">🔒 Private</option>
+                    </select>
+                  </div>
+
+                  <!-- Row 3: Tonight's 3 AM Status / Bio -->
+                  <div class="compact-field-group">
+                    <input type="text" id="checkin-status" placeholder="Drop your 3 AM status or thought (e.g. Upvan Lake drives & coffee)..." maxlength="140">
+                    <input type="hidden" id="checkin-bio" value="Up at 3 AM exploring the radar 🌙">
+                  </div>
+
+                  <!-- Row 4: City + Area + Fuel -->
+                  <div class="compact-grid-3">
+                    <input type="text" id="checkin-city" placeholder="City" value="Thane" required>
+                    <input type="text" id="checkin-neighborhood" placeholder="Area (e.g. Hiranandani)">
+                    <select id="checkin-beverage">
+                      <option value="☕ Coffee">☕ Coffee</option>
+                      <option value="🍵 Chai">🍵 Tapri Chai</option>
+                      <option value="⚡ Energy">⚡ RedBull</option>
+                      <option value="💧 Water">💧 Water</option>
+                    </select>
+                  </div>
+
+                  <!-- Row 5: Current Frequency / Aura -->
+                  <div class="compact-field-group">
+                    <div class="aura-selector compact-aura-row">
+                      <label class="aura-option"><input type="radio" name="aura" value="vibe" checked> <span class="badge badge-vibe">🎧 Vibing</span></label>
+                      <label class="aura-option"><input type="radio" name="aura" value="grind"> <span class="badge badge-grind">💻 Grind</span></label>
+                      <label class="aura-option"><input type="radio" name="aura" value="exam"> <span class="badge badge-exam">📚 Exam</span></label>
+                      <label class="aura-option"><input type="radio" name="aura" value="gaming"> <span class="badge badge-gaming">🎮 Gaming</span></label>
+                    </div>
+                  </div>
+
+                  <!-- Row 6: Multi-Select Dropdown for Interests (Max 5) -->
+                  <div class="compact-field-group">
+                    <div class="multi-select-dropdown" id="interests-dropdown-wrap">
+                      <button type="button" class="multi-select-trigger" id="interests-dropdown-btn">
+                        <span id="interests-dropdown-label">✨ Match Interests (Select up to 5)</span>
+                        <span class="multi-select-arrow">▾</span>
+                      </button>
+                      <div class="multi-select-menu hidden" id="interests-dropdown-menu"></div>
+                    </div>
+                    <!-- Hidden container for backward compatibility -->
+                    <div id="interests-picker" class="hidden"></div>
+                    <div id="looking-for-picker" class="hidden"></div>
+                  </div>
+
+                  <!-- Row 7: Song on Repeat + Looking For -->
+                  <div class="compact-grid-2">
+                    <input type="text" id="checkin-track" placeholder="🎵 Song on Repeat">
+                    <select id="checkin-looking-for">
+                      <option value="late-night-ride">🚗 Down for Night Ride</option>
+                      <option value="just-vibing">🎧 Just Vibing</option>
+                      <option value="study-buddy">📚 Study Buddy</option>
+                      <option value="hangout">🎯 Night Hangout</option>
+                      <option value="coffee-walk">☕ 3AM Coffee Walk</option>
+                    </select>
+                  </div>
+
+                  <!-- Preserved hidden inputs for Social Links (editable in Profile tab) -->
+                  <div class="hidden">
+                    <input type="text" id="soc-ig"><input type="checkbox" id="soc-ig-pub" checked>
+                    <input type="text" id="soc-snap"><input type="checkbox" id="soc-snap-pub" checked>
+                    <input type="text" id="soc-spot"><input type="checkbox" id="soc-spot-pub" checked>
+                    <input type="text" id="soc-disc"><input type="checkbox" id="soc-disc-pub" checked>
+                    <input type="text" id="soc-twit"><input type="checkbox" id="soc-twit-pub" checked>
+                  </div>
+
+                  <!-- Row 8: Prominent Dive In Button Always Visible on Same Screen -->
+                  <button type="submit" id="btn-dive-submit" class="btn-primary w-100 dive-submit-btn">
+                    🌊 Dive In & Broadcast
+                  </button>
+                </form>
+              </div>
+
+              <div id="checked-in-container" class="hidden">
+                <button id="checkout-btn" class="btn-outline w-100">👻 Go Ghost</button>
+              </div>
+            </div>
+
+            <!-- Sub-Panel 2: Create or Join a Late Night Ride -->
+            <div class="dive-sub-pane" id="dive-ride">
+              <div class="feed-card mb-2">
+                <h3 class="mb-1">🚗 Post a Late Night Ride</h3>
+                <form id="ride-form">
+                  <div class="ride-type-toggle mb-1">
+                    <label><input type="radio" name="rideType" value="offering" checked> 🟢 Offering a Ride</label>
+                    <label><input type="radio" name="rideType" value="looking"> 🟡 Looking for a Ride</label>
+                  </div>
+                  <div class="form-row">
+                    <input type="text" id="ride-from" placeholder="Pickup (e.g. Hiranandani Thane)" required>
+                    <input type="text" id="ride-to" placeholder="Drop / Spot (e.g. Upvan Lake)" required>
+                  </div>
+                  <div class="form-row">
+                    <input type="text" id="ride-time" placeholder="Time (e.g. 2:30 AM)" required>
+                    <input type="number" id="ride-seats" placeholder="Seats (1-6)" min="1" max="6" value="2" required>
+                  </div>
+                  <input type="text" id="ride-note" placeholder="Vibe note (e.g. Sunroof + Arijit Singh playlist + Chai stop)" maxlength="100">
+                  <button type="submit" class="btn-primary w-100">🚗 Drop Ride Pin</button>
+                </form>
+              </div>
+              <div id="rides-list" class="feed-list"></div>
+            </div>
+
+            <!-- Sub-Panel 3: Create or Join a Night Hangout -->
+            <div class="dive-sub-pane" id="dive-hangout">
+              <div class="feed-card mb-2">
+                <h3 class="mb-1">🎯 Start a Night Hangout</h3>
+                <form id="hangout-form">
+                  <input type="text" id="hangout-spot" placeholder="Spot (e.g. Upvan Lake Promenade / The Walk Thane)" required>
+                  <div class="activity-selector mb-1" id="activity-picker"></div>
+                  <input type="hidden" id="hangout-activity" value="coffee">
+                  <input type="text" id="hangout-desc" placeholder="What's the plan? (max 140 chars)" maxlength="140">
+                  <div class="form-row">
+                    <input type="number" id="hangout-max" placeholder="Squad Size (2-10)" min="2" max="10" value="4" required>
+                    <input type="text" id="hangout-time" placeholder="Starts at (e.g. 2:15 AM)" required>
+                  </div>
+                  <button type="submit" class="btn-primary w-100">🎯 Launch Hangout</button>
+                </form>
+              </div>
+              <div id="hangouts-list" class="feed-list"></div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ─────────────────────────────────────────────────────── -->
+        <!-- SECTION 3: 💬 MESSAGES (Instagram-Style Midnight DMs)   -->
+        <!-- ─────────────────────────────────────────────────────── -->
+        <section class="app-page" id="page-messages" data-index="3">
+          <div class="messages-layout">
+            <!-- Left / Top: Active Owl Threads -->
+            <div class="dm-threads-panel" id="dm-threads-panel">
+              <div class="dm-panel-header">
+                <div class="dm-header-top-row">
+                  <h3 id="dm-inbox-title">Messages</h3>
+                  <button type="button" class="dm-requests-btn" id="dm-requests-toggle-btn">
+                    <span id="dm-requests-label">Requests</span>
+                    <span id="dm-requests-count" class="dm-req-count">0</span>
+                    <span id="dm-requests-dot" class="unread-dot hidden"></span>
+                  </button>
+                </div>
+                <div class="dm-search-box" id="dm-search-wrapper">
+                  <span class="dm-search-icon">🔍</span>
+                  <input type="text" id="dm-mutual-search" placeholder="Search mutual followers..." autocomplete="off">
+                </div>
+              </div>
+              <div class="dm-thread-list" id="dm-thread-list"></div>
+            </div>
+
+            <!-- Right / Main: Active Conversation Box -->
+            <div class="dm-chat-panel" id="dm-chat-panel">
+              <div class="dm-chat-header" id="dm-chat-header">
+                <button type="button" class="btn-back-dm" id="btn-back-dm">← Back</button>
+                <div id="dm-active-partner-info" style="display:flex;align-items:center;gap:8px;">
+                  <span>🦉 Select a chat</span>
+                </div>
+                <button type="button" class="btn-outline" id="dm-view-profile-btn" style="padding:4px 10px;font-size:0.72rem;">Profile</button>
+              </div>
+
+              <div class="dm-messages-scroll" id="dm-messages-scroll"></div>
+
+              <!-- Request Acceptance / 1-Message Limit Notice Banner -->
+              <div id="dm-request-banner" class="dm-request-banner hidden"></div>
+
+              <!-- Quick Icebreaker Pills -->
+              <div class="dm-icebreakers" id="dm-icebreakers-bar">
+                <button type="button" class="icebreaker-pill" data-ice="🚗 Down for a late-night drive & chai?">🚗 Night Drive?</button>
+                <button type="button" class="icebreaker-pill" data-ice="☕ Grabbing 3 AM cold coffee near Thane, join?">☕ 3AM Coffee?</button>
+                <button type="button" class="icebreaker-pill" data-ice="🎧 We matched on interests! What song is on repeat?">🎧 Song check?</button>
+              </div>
+
+              <form id="dm-send-form" class="dm-send-form">
+                <input type="text" id="dm-input" placeholder="Message..." autocomplete="off" required>
+                <button type="submit" id="dm-send-btn" class="btn-primary">Send</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─────────────────────────────────────────────────────── -->
+        <!-- SECTION 4: 👤 PROFILE (Rightmost Instagram Profile)     -->
+        <!-- ─────────────────────────────────────────────────────── -->
+        <section class="app-page" id="page-profile" data-index="4">
+          <div class="page-scroll-inner">
+            <div id="my-profile-view"></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  INSTAGRAM-STYLE 5-TAB BOTTOM NAVIGATION BAR                -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <nav class="insta-bottom-nav" id="insta-bottom-nav">
+      <button type="button" class="insta-tab active" data-page-index="0">
+        <span class="insta-icon">🏠</span>
+        <span class="insta-label">Home</span>
+      </button>
+      <button type="button" class="insta-tab" data-page-index="1">
+        <span class="insta-icon">🔍</span>
+        <span class="insta-label">Search Map</span>
+      </button>
+      <button type="button" class="insta-tab dive-center-tab" data-page-index="2">
+        <div class="dive-orb-btn">🌊</div>
+        <span class="insta-label" style="color:var(--accent);font-weight:700;">Dive In</span>
+      </button>
+      <button type="button" class="insta-tab" data-page-index="3">
+        <span class="insta-icon" style="position:relative;">💬<span id="nav-msg-dot" class="unread-dot nav-dot hidden"></span></span>
+        <span class="insta-label">Messages</span>
+      </button>
+      <button type="button" class="insta-tab" data-page-index="4">
+        <span class="insta-icon">👤</span>
+        <span class="insta-label">Profile</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <div id="toast-container"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <script src="/js/reactbits.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
