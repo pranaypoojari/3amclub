@@ -114,13 +114,10 @@ app.get(['/api/health', '/healthz'], async (req, res) => {
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   lastModified: false,
-  setHeaders: (res, filePath) => {
+  setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Clear-Site-Data', '"cache"');
-    }
   }
 }));
 
@@ -950,6 +947,10 @@ app.get('/api/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.write('event: connected\ndata: {"status":"ok"}\n\n');
+  if (process.env.VERCEL) {
+    return res.end();
+  }
   clients.push({ res });
   req.on('close', () => {
     clients = clients.filter(c => c.res !== res);

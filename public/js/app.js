@@ -2148,6 +2148,141 @@
     }
   };
 
+  // ── PWA WEB APP DOWNLOAD / INSTALL ENGINE (Profile Menu Integration) ──
+  let deferredInstallPrompt = null;
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (currentPageIndex === 4) renderProfileTab(null);
+  });
+
+  window.addEventListener('appinstalled', () => {
+    localStorage.setItem('3am_webapp_installed', '1');
+    deferredInstallPrompt = null;
+    showToast('✅ 3AM Club Web App Downloaded & Installed!');
+    if (currentPageIndex === 4) renderProfileTab(null);
+  });
+
+  function isWebAppInstalled() {
+    try {
+      const standaloneMatch = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+      const iosStandalone = window.navigator && window.navigator.standalone === true;
+      const savedFlag = localStorage.getItem('3am_webapp_installed') === '1';
+      if (standaloneMatch || iosStandalone) {
+        localStorage.setItem('3am_webapp_installed', '1');
+        return true;
+      }
+      return savedFlag;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function buildProfileWebAppCardHtml() {
+    const installed = isWebAppInstalled();
+    if (installed) {
+      return `
+        <div class="feed-card compact-profile-card mt-1 profile-webapp-card installed" id="profile-webapp-card">
+          <div class="pwa-card-row">
+            <div class="pwa-card-left">
+              <div class="pwa-icon-badge installed">✅</div>
+              <div>
+                <div class="pwa-title">3AM Club Web App Downloaded</div>
+                <div class="pwa-sub">Installed on your device • Instant 11 PM launch ready</div>
+              </div>
+            </div>
+            <span class="pwa-status-tick">✓ Installed</span>
+          </div>
+        </div>
+      `;
+    }
+    return `
+      <div class="feed-card compact-profile-card mt-1 profile-webapp-card" id="profile-webapp-card">
+        <div class="pwa-card-row">
+          <div class="pwa-card-left">
+            <div class="pwa-icon-badge">📲</div>
+            <div>
+              <div class="pwa-title">Download 3AM Club Web App</div>
+              <div class="pwa-sub">Install on your phone or desktop for 1-tap full-screen access</div>
+            </div>
+          </div>
+          <button type="button" class="btn-primary pwa-download-btn" onclick="window.__installWebApp()">
+            ⬇️ Download App
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  window.__confirmWebAppInstalled = function() {
+    localStorage.setItem('3am_webapp_installed', '1');
+    const modal = document.getElementById('pwa-install-guide-modal');
+    if (modal) modal.remove();
+    showToast('✅ Marked as Downloaded! 3AM Club Web App is ready.');
+    renderProfileTab(null);
+  };
+
+  window.__installWebApp = async function() {
+    if (isWebAppInstalled()) {
+      showToast('✅ You already have The 3AM Club Web App installed!');
+      renderProfileTab(null);
+      return;
+    }
+    if (deferredInstallPrompt) {
+      try {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          localStorage.setItem('3am_webapp_installed', '1');
+          deferredInstallPrompt = null;
+          showToast('🎉 3AM Club Web App Downloaded!');
+          renderProfileTab(null);
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Show interactive 1-click Install Guide Modal for Chrome URL bar / iOS Safari / macOS
+    const existing = document.getElementById('pwa-install-guide-modal');
+    if (existing) existing.remove();
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+    const modal = document.createElement('div');
+    modal.id = 'pwa-install-guide-modal';
+    modal.className = 'pwa-modal-backdrop';
+    modal.innerHTML = `
+      <div class="pwa-modal-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h3 style="margin:0;font-size:1rem;color:#f4f4f6;">📲 Install The 3AM Club Web App</h3>
+          <button type="button" class="btn-outline" style="padding:3px 9px;font-size:0.75rem;" onclick="document.getElementById('pwa-install-guide-modal').remove()">✕</button>
+        </div>
+        <p style="font-size:0.8rem;color:#a1a1aa;margin:0 0 12px;line-height:1.45;">
+          Get the native full-screen 3AM Club experience right on your home screen or desktop dock:
+        </p>
+        <div class="pwa-steps-list">
+          ${isIOS ? `
+            <div class="pwa-step-item"><b>1.</b> Tap the <b>Share (⬆️)</b> button at the bottom of Safari.</div>
+            <div class="pwa-step-item"><b>2.</b> Scroll down and tap <b>"Add to Home Screen ➕"</b>.</div>
+            <div class="pwa-step-item"><b>3.</b> Tap <b>Add</b> in the top-right corner.</div>
+          ` : `
+            <div class="pwa-step-item"><b>Desktop Chrome / Edge:</b> Click the <b>Install App icon (📥)</b> on the right side of your browser address bar.</div>
+            <div class="pwa-step-item"><b>Android Chrome:</b> Tap the <b>⋮ Menu</b> (top right) → Tap <b>"Install app"</b> or <b>"Add to Home screen"</b>.</div>
+          `}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="button" class="btn-primary w-100" onclick="window.__confirmWebAppInstalled()">✅ I've Installed It (Mark with Tick)</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  };
+
   // SECTION 4: COMPACT INSTAGRAM-STYLE PROFILE VIEW (MY PROFILE vs OTHER PROFILE)
   window.__renderMyProfile = function() {
     renderProfileTab(null);
@@ -2172,6 +2307,7 @@
             <button class="btn-outline w-100" onclick="window.__editMyProfile()">🌊 Or Quick Broadcast in Dive In</button>
           </div>
         </div>
+        ${buildProfileWebAppCardHtml()}
       `;
       return;
     }
@@ -2287,6 +2423,8 @@
             ${socialChips || '<span class="text-muted" style="font-size:0.74rem;">No socials linked yet. Tap Edit Socials to add!</span>'}
           </div>
         </div>
+
+        ${buildProfileWebAppCardHtml()}
 
         ${isMe ? `
         <div class="feed-card compact-profile-card mt-1" style="border-color:rgba(16,185,129,0.28);">
