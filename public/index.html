@@ -89,7 +89,7 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/styles.css?v=20260929_3">
 </head>
 <body>
   <noscript>
@@ -126,8 +126,9 @@
         <a href="#safety-architecture">Mutual Pin Privacy</a>
       </div>
       <div class="landing-nav-actions">
+        <button type="button" class="btn-outline btn-sm" id="nav-explore-app">🔍 Explore App</button>
         <button type="button" class="btn-outline btn-sm" id="nav-go-login">🔑 Log In</button>
-        <button type="button" class="btn-primary btn-sm btn-magnet" id="nav-go-signup">⚡ Start Hunting</button>
+        <button type="button" class="btn-primary btn-sm btn-magnet" id="nav-go-signup">🦉 Create Profile</button>
       </div>
     </nav>
 
@@ -137,8 +138,8 @@
         <div class="landing-hero-left">
           <div class="hero-live-pill">
             <span class="live-pulse-dot"></span>
-            <span>GATES OPEN 11:00 PM – 05:00 AM •</span>
-            <strong id="landing-online-count" data-countup="104" data-suffix="+ Owls Hunting">104+ Owls Hunting</strong>
+            <span id="landing-gate-status-label">LIVE HUNTING: 11:00 PM – 05:00 AM IST •</span>
+            <strong id="landing-online-count" data-countup="104" data-suffix="+ Owls Ready">104+ Owls Ready</strong>
           </div>
 
           <h1 class="landing-hero-title">
@@ -148,8 +149,17 @@
           </h1>
 
           <p class="landing-hero-tagline">
-            Built <strong>by GenZ, for GenZ</strong> — India's ephemeral midnight social radar. Match shared interests (<code>#late-drives</code>, <code>#coding</code>, <code>#music</code>), hop on spontaneous 3 AM cold-coffee runs, and unlock <strong>mutual-only live GPS pins</strong> before sunrise wipes the slate clean.
+            Built <strong>by GenZ, for GenZ</strong> — India's midnight social radar. Create your permanent Night Owl profile &amp; explore the radar anytime; live 3 AM broadcasts, late-night drives, and 3 AM cold-coffee runs unlock from <strong>11:00 PM to 5:00 AM</strong>.
           </p>
+
+          <!-- Live 11:00 PM Gate Countdown Card (Replaces old RSVP Vault) -->
+          <div class="landing-countdown-banner">
+            <div class="lcb-left">
+              <div class="lcb-title" id="landing-countdown-heading">⏳ NEXT 11:00 PM HUNT STARTS IN</div>
+              <div class="lcb-sub">Create your profile &amp; explore the app anytime. Live hunting runs 11 PM – 5 AM.</div>
+            </div>
+            <div class="lcb-timer" id="vault-countdown">--:--:--</div>
+          </div>
 
           <!-- Live Stats Strip (ReactBits CountUp) -->
           <div class="landing-stats-row">
@@ -166,8 +176,8 @@
               <div class="stat-lbl">Mutual-Gated GPS Pins</div>
             </div>
             <div class="landing-stat-box">
-              <div class="stat-num">05:00 AM</div>
-              <div class="stat-lbl">Sunrise Auto-Wipe</div>
+              <div class="stat-num">11 PM</div>
+              <div class="stat-lbl">Gates Open Nightly</div>
             </div>
           </div>
 
@@ -185,7 +195,7 @@
           </div>
         </div>
 
-        <!-- RIGHT COLUMN: REACTBITS SPOTLIGHT AUTH PORTAL CARD -->
+        <!-- RIGHT COLUMN: REACTBITS SPOTLIGHT CREATE PROFILE / LOGIN PORTAL CARD -->
         <div class="landing-hero-right">
           <div class="auth-portal-card" id="auth-portal-card">
             <div class="auth-portal-badge-row">
@@ -193,13 +203,13 @@
               <span class="genz-mini-tag">BY GENZ • FOR GENZ</span>
             </div>
 
-            <h2 class="auth-portal-heading" id="auth-portal-heading">Join Tonight's Hunt 🦉</h2>
-            <p class="auth-portal-sub" id="auth-portal-sub">Create your Night Owl account or log in to unlock the live 3 AM radar.</p>
+            <h2 class="auth-portal-heading" id="auth-portal-heading">Create Your 3AM Profile 🦉</h2>
+            <p class="auth-portal-sub" id="auth-portal-sub">Set up your Night Owl profile or log in to explore the radar &amp; hunt at 11 PM.</p>
 
             <!-- Mode Switcher Tabs -->
             <div class="auth-mode-tabs">
               <button type="button" class="auth-mode-tab active" id="tab-auth-register" data-mode="register">
-                🦉 Create Account
+                🦉 Create Profile
               </button>
               <button type="button" class="auth-mode-tab" id="tab-auth-login" data-mode="login">
                 🔑 Log In
@@ -255,12 +265,12 @@
               </div>
 
               <div class="auth-field">
-                <label>Tonight's Status / What You're Hunting For</label>
+                <label>Your Bio / Tonight's Vibe</label>
                 <input type="text" id="reg-bio" placeholder="e.g. Down for a 2:30 AM sunroof drive & cold coffee ☕" maxlength="120">
               </div>
 
               <button type="submit" class="btn-primary w-100 btn-magnet auth-submit-btn" id="reg-submit-btn">
-                🚀 Create Account &amp; Start Hunting
+                🚀 Create Profile &amp; Enter Radar
               </button>
             </form>
 
@@ -275,15 +285,20 @@
                 <input type="password" id="login-password" placeholder="Your password" required>
               </div>
               <button type="submit" class="btn-primary w-100 btn-magnet auth-submit-btn" id="login-submit-btn">
-                ⚡ Log In &amp; Start Hunting
+                ⚡ Log In &amp; Enter Radar
               </button>
             </form>
 
-            <div class="auth-divider"><span>OR INSTANT PREVIEW</span></div>
+            <div class="auth-divider"><span>OR EXPLORE NOW</span></div>
 
-            <button type="button" class="btn-guest-hunt w-100" id="btn-instant-demo-hunt">
-              ⚡ Quick Guest Pass (1-Click Demo Hunt with JWT) →
-            </button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button type="button" class="btn-guest-hunt" id="btn-instant-demo-hunt">
+                ⚡ 1-Click Demo Profile
+              </button>
+              <button type="button" class="btn-outline" id="btn-explore-radar" style="padding:9px 10px;border-radius:10px;font-size:0.77rem;">
+                🔍 Explore App First →
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -293,7 +308,7 @@
         <div class="bento-section-header">
           <span class="genz-badge-pill">⚡ ENGINEERED FOR LATE NIGHTS</span>
           <h2 class="decrypted-text">How The 3AM Hunt Works</h2>
-          <p>Zero clout-chasing. Zero daytime noise. Pure midnight serendipity with strict privacy controls.</p>
+          <p>Create your profile &amp; explore the app anytime. Live hunting &amp; broadcasts run nightly from 11:00 PM to 5:00 AM.</p>
         </div>
 
         <div class="bento-grid" id="safety-architecture">
@@ -320,9 +335,9 @@
 
           <div class="bento-card bento-wide" id="radar-cities">
             <div class="bento-icon">🌅</div>
-            <div class="bento-tag">5:00 AM EPHEMERAL WIPE + JWT PERSISTENCE</div>
-            <h3>Tonight's Thoughts Evaporate at Sunrise. Your Crew Stays.</h3>
-            <p>All 3 AM confessions, ride pins, and temporary statuses auto-wipe at 5:00 AM IST while your registered Night Owl profile, mutual followers, and rotating JWT session stay ready for tomorrow night.</p>
+            <div class="bento-tag">11:00 PM START + 5:00 AM EPHEMERAL WIPE</div>
+            <h3>Set Up Your Profile Anytime. Hunt Live at 11:00 PM.</h3>
+            <p>Explore the radar and customize your profile &amp; socials during the day. At 11:00 PM the live hunting gates open, and at 5:00 AM temporary thoughts auto-wipe while your permanent account &amp; mutuals stay safe.</p>
           </div>
         </div>
       </section>
@@ -335,33 +350,6 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  DAYTIME VAULT SCREEN (5:00 AM – 11:00 PM)                  -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <div id="vault-screen" class="screen">
-    <canvas id="ghost-canvas"></canvas>
-    <div class="vault-content">
-      <div class="logo">🎃 THE 3AM CLUB</div>
-      <div class="subtitle">☠️ No Sleep Till Sunrise ☠️</div>
-      <div class="countdown-container">
-        <div id="vault-countdown">--:--:--</div>
-        <div class="countdown-label">UNTIL GATES OPEN</div>
-      </div>
-      
-      <div class="rsvp-card">
-        <h3>Reserve Your Spot Tonight</h3>
-        <form id="rsvp-form">
-          <input type="text" id="rsvp-alias" placeholder="Your @Alias" required>
-          <input type="text" id="rsvp-city" placeholder="City (e.g. Thane, Mumbai)" required>
-          <input type="text" id="rsvp-goal" placeholder="Tonight's vibe or goal?" required>
-          <button type="submit" class="btn-primary w-100">🌙 Lock In RSVP</button>
-        </form>
-      </div>
-      
-      <button id="override-btn" class="btn-override">🌊 Dive In Now (3AM Override)</button>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  INSTAGRAM-STYLE 5-TAB SWIPEABLE 3AM CLUB PORTAL            -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div id="club-screen" class="screen">
@@ -369,7 +357,7 @@
     <!-- Top Compact Header -->
     <header class="club-header">
       <div class="header-left">
-        <div class="logo-small" id="brand-home-trigger" style="cursor:pointer;" title="View Landing Page">🎃 THE 3AM CLUB</div>
+        <div class="logo-small" id="brand-home-trigger" style="cursor:pointer;" title="Open Landing Page">🎃 THE 3AM CLUB</div>
         <div class="online-status-badge" title="Active Night Owls Online">
           <span class="live-pulse-dot"></span>
           <span id="online-count-val">100</span>
@@ -377,15 +365,21 @@
         </div>
       </div>
       <div class="header-right">
-        <span id="header-user-badge" class="header-pill-btn" title="Authenticated JWT Session" style="border-color:rgba(16,185,129,0.35);color:#6ee7b7;">🔐 @NightOwl</span>
+        <button type="button" id="btn-header-landing" class="header-pill-btn" title="View Landing Page & 11PM Countdown">🌙 Landing</button>
+        <button type="button" id="header-user-badge" class="header-pill-btn" style="border-color:rgba(139,92,246,0.45);color:#ddd6fe;" title="Create Profile or View Account">⚡ Create Profile</button>
+        <button type="button" id="btn-header-logout" class="header-pill-btn hidden" style="border-color:rgba(244,63,94,0.35);color:#fda4af;" title="Log Out of Account">Log Out</button>
         <button id="btn-rain" class="header-pill-btn" title="Midnight Rain Ambience">🌧️ Rain</button>
         <button id="btn-lofi" class="header-pill-btn" title="3AM Lofi Radio">🎵 Lofi</button>
         <div class="live-clock" id="live-clock">03:00:00</div>
         <button id="locate-me-btn" class="btn-icon" title="Center on My GPS">📍</button>
-        <button id="btn-header-logout" class="btn-icon" title="Log Out / Back to Landing">🚪</button>
-        <button id="lock-btn" class="btn-icon" title="View Countdown Vault">🔒</button>
       </div>
     </header>
+
+    <!-- Daytime Explore & 11:00 PM Timing Notice Strip -->
+    <div id="daytime-timing-strip" class="daytime-timing-strip">
+      <span>⏳ <strong>Explore Mode:</strong> You can set up your profile &amp; browse the radar now — Live 3AM Hunting runs <strong>11:00 PM – 5:00 AM IST</strong> (<span id="club-countdown-inline">--:--:--</span> left)</span>
+      <button type="button" id="strip-create-profile-btn" class="strip-cta-btn">🦉 Create Profile / Log In</button>
+    </div>
 
     <!-- Swipeable 5-Section Viewport -->
     <main class="swipe-viewport" id="swipe-viewport">
@@ -755,9 +749,9 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   
-  <script src="/js/reactbits.js"></script>
-  <script src="/js/map.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/reactbits.js?v=20260929_3"></script>
+  <script src="/js/map.js?v=20260929_3"></script>
+  <script src="/js/app.js?v=20260929_3"></script>
 
   <!-- Vercel Web Analytics (@vercel/analytics) & Speed Insights (@vercel/speed-insights) -->
   <script>

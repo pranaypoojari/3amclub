@@ -67,12 +67,56 @@
 
   function updateHeaderUserBadge() {
     const badge = document.getElementById('header-user-badge');
-    if (!badge) return;
+    const logoutBtn = document.getElementById('btn-header-logout');
+    const stripBtn = document.getElementById('strip-create-profile-btn');
+    const navExploreBtn = document.getElementById('nav-explore-app');
+
     if (myOwl && myOwl.alias) {
-      badge.textContent = `🔐 @${myOwl.alias}`;
-      badge.style.display = 'inline-flex';
+      if (badge) {
+        badge.textContent = `👤 @${myOwl.alias}`;
+        badge.style.borderColor = 'rgba(16,185,129,0.42)';
+        badge.style.color = '#6ee7b7';
+      }
+      if (logoutBtn) logoutBtn.classList.remove('hidden');
+      if (stripBtn) {
+        stripBtn.textContent = `✓ Profile Ready (@${myOwl.alias})`;
+      }
+      if (navExploreBtn) {
+        navExploreBtn.textContent = `⚡ Back to Radar (@${myOwl.alias})`;
+      }
+    } else {
+      if (badge) {
+        badge.textContent = '⚡ Create Profile';
+        badge.style.borderColor = 'rgba(139,92,246,0.45)';
+        badge.style.color = '#ddd6fe';
+      }
+      if (logoutBtn) logoutBtn.classList.add('hidden');
+      if (stripBtn) {
+        stripBtn.textContent = '🦉 Create Profile / Log In';
+      }
+      if (navExploreBtn) {
+        navExploreBtn.textContent = '🔍 Explore App';
+      }
     }
   }
+
+  function openLandingAuthPortal(mode = 'register') {
+    if (screens.club) screens.club.classList.remove('active');
+    if (screens.vault) screens.vault.classList.remove('active');
+    if (screens.landing) screens.landing.classList.add('active');
+    const tabRegister = document.getElementById('tab-auth-register');
+    const tabLogin = document.getElementById('tab-auth-login');
+    if (mode === 'login' && tabLogin) {
+      tabLogin.click();
+    } else if (tabRegister) {
+      tabRegister.click();
+    }
+    const authCard = document.getElementById('auth-portal-card');
+    if (authCard) {
+      setTimeout(() => authCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    }
+  }
+  window.__openCreateProfilePortal = openLandingAuthPortal;
 
   function saveAuthSession(data) {
     if (data.accessToken) {
@@ -106,6 +150,7 @@
       clearInterval(refreshTimer);
       refreshTimer = null;
     }
+    updateHeaderUserBadge();
   }
 
   async function attemptSilentRefresh() {
@@ -145,10 +190,8 @@
       });
     } catch (_) {}
     clearAuthSession();
-    if (screens.club) screens.club.classList.remove('active');
-    if (screens.vault) screens.vault.classList.remove('active');
-    if (screens.landing) screens.landing.classList.add('active');
-    showToast('👋 Logged out safely. See you at 3 AM!');
+    openLandingAuthPortal('register');
+    showToast('👋 Logged out safely. Create a profile or log in anytime!');
     trackEvent('user_logout');
   }
   window.__logout3AM = logoutAndReturnToLanding;
@@ -169,6 +212,8 @@
     const errorBanner = document.getElementById('auth-error-banner');
     const navGoLogin = document.getElementById('nav-go-login');
     const navGoSignup = document.getElementById('nav-go-signup');
+    const navExploreApp = document.getElementById('nav-explore-app');
+    const btnExploreRadar = document.getElementById('btn-explore-radar');
     const authCard = document.getElementById('auth-portal-card');
 
     function setAuthError(msg) {
@@ -191,7 +236,7 @@
       if (formLogin) formLogin.classList.toggle('hidden', !isLogin);
       const heading = document.getElementById('auth-portal-heading');
       if (heading) {
-        heading.textContent = isLogin ? 'Welcome Back, Night Owl 🔑' : "Join Tonight's Hunt 🦉";
+        heading.textContent = isLogin ? 'Welcome Back, Night Owl 🔑' : 'Create Your 3AM Profile 🦉';
       }
     }
 
@@ -210,6 +255,17 @@
         if (authCard) authCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
+
+    // Explore App buttons (lets user browse the radar anytime; hunting starts at 11 PM)
+    const handleExploreClick = async () => {
+      trackEvent('explore_app_clicked');
+      await openGates();
+      if (!myOwl) {
+        showToast('🔍 Exploring the 3AM Radar — Tap "⚡ Create Profile" anytime to claim your @alias!');
+      }
+    };
+    if (navExploreApp) navExploreApp.addEventListener('click', handleExploreClick);
+    if (btnExploreRadar) btnExploreRadar.addEventListener('click', handleExploreClick);
 
     // Emoji selector strip
     const emojiStrip = document.getElementById('reg-emoji-strip');
@@ -233,7 +289,7 @@
         const origText = submitBtn ? submitBtn.textContent : '';
         if (submitBtn) {
           submitBtn.disabled = true;
-          submitBtn.textContent = '🦉 Minting JWT & Entering Radar...';
+          submitBtn.textContent = '🦉 Creating Profile & Minting JWT...';
         }
         try {
           const alias = document.getElementById('reg-alias').value.trim();
@@ -259,7 +315,7 @@
           });
           const data = await res.json();
           if (!res.ok) {
-            setAuthError(data.error || 'Could not create account.');
+            setAuthError(data.error || 'Could not create profile.');
             if (submitBtn) {
               submitBtn.disabled = false;
               submitBtn.textContent = origText;
@@ -268,7 +324,7 @@
           }
           saveAuthSession(data);
           trackEvent('signup_success', { city });
-          showToast(`🦉 Welcome @${data.user.alias}! JWT Access + Refresh Token active.`);
+          showToast(`🦉 Profile created for @${data.user.alias}! JWT Access + Refresh Token active.`);
           await openGates();
         } catch (err) {
           setAuthError('Network error. Please try again.');
@@ -312,7 +368,7 @@
           }
           saveAuthSession(data);
           trackEvent('login_success');
-          showToast(`⚡ Welcome back @${data.user.alias}! Hunting radar unlocked.`);
+          showToast(`⚡ Welcome back @${data.user.alias}! Profile unlocked.`);
           await openGates();
         } catch (err) {
           setAuthError('Network error. Please try again.');
@@ -325,14 +381,14 @@
       });
     }
 
-    // 1-Click Guest Pass Demo Hunt (creates a JWT-backed guest account immediately)
+    // 1-Click Demo Profile (creates a JWT-backed NightOwl profile immediately)
     const guestBtn = document.getElementById('btn-instant-demo-hunt');
     if (guestBtn) {
       guestBtn.addEventListener('click', async () => {
         setAuthError('');
         const origText = guestBtn.textContent;
         guestBtn.disabled = true;
-        guestBtn.textContent = '⚡ Issuing Guest JWT Pass...';
+        guestBtn.textContent = '⚡ Creating Demo Profile...';
         try {
           const randTag = Math.floor(100 + Math.random() * 899);
           const guestAlias = `Hunter_${randTag}`;
@@ -354,11 +410,11 @@
           if (res.ok && data.accessToken) {
             saveAuthSession(data);
             trackEvent('guest_hunt_started');
-            showToast(`⚡ Entered as @${data.user.alias} with JWT Session!`);
+            showToast(`⚡ Profile created as @${data.user.alias} with JWT Session!`);
             await openGates();
           }
         } catch (_) {
-          setAuthError('Could not start guest session.');
+          setAuthError('Could not start demo session.');
         } finally {
           guestBtn.disabled = false;
           guestBtn.textContent = origText;
@@ -366,20 +422,40 @@
       });
     }
 
-    // Header logout & brand landing trigger
+    // Header buttons: Landing button, Create Profile/Account badge, and Log Out button
+    const headerLandingBtn = document.getElementById('btn-header-landing');
+    const brandHomeTrigger = document.getElementById('brand-home-trigger');
+    const headerUserBadge = document.getElementById('header-user-badge');
+    const stripCreateProfileBtn = document.getElementById('strip-create-profile-btn');
     const logoutBtn = document.getElementById('btn-header-logout');
+
+    if (headerLandingBtn) {
+      headerLandingBtn.addEventListener('click', () => openLandingAuthPortal('register'));
+    }
+    if (brandHomeTrigger) {
+      brandHomeTrigger.addEventListener('click', () => openLandingAuthPortal('register'));
+    }
+    if (headerUserBadge) {
+      headerUserBadge.addEventListener('click', () => {
+        if (myOwl) {
+          navigateToPage(4);
+        } else {
+          openLandingAuthPortal('register');
+        }
+      });
+    }
+    if (stripCreateProfileBtn) {
+      stripCreateProfileBtn.addEventListener('click', () => {
+        if (myOwl) {
+          navigateToPage(4);
+        } else {
+          openLandingAuthPortal('register');
+        }
+      });
+    }
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         logoutAndReturnToLanding();
-      });
-    }
-
-    const brandHomeTrigger = document.getElementById('brand-home-trigger');
-    if (brandHomeTrigger) {
-      brandHomeTrigger.addEventListener('click', () => {
-        if (screens.club) screens.club.classList.remove('active');
-        if (screens.landing) screens.landing.classList.add('active');
-        showToast('💡 Viewing Landing Page — Log in or click Guest Pass to return to radar.');
       });
     }
   }
@@ -403,7 +479,7 @@
       const sData = await sRes.json();
       const landingCounter = document.getElementById('landing-online-count');
       if (landingCounter && sData.activeOwls) {
-        landingCounter.textContent = `${sData.activeOwls}+ Owls Hunting`;
+        landingCounter.textContent = `${sData.activeOwls}+ Owls Ready`;
       }
     } catch (_) {}
 
@@ -437,7 +513,8 @@
       }
     }
 
-    // Otherwise stay on the ReactBits Interactive GenZ Landing Page so they can Create Account or Log In!
+    // If user has NO profile/account yet, ALWAYS show the ReactBits Interactive GenZ Landing Page!
+    updateHeaderUserBadge();
     if (screens.landing) screens.landing.classList.add('active');
     if (screens.club) screens.club.classList.remove('active');
   }
@@ -494,28 +571,6 @@
     await fetchAllData();
     handleUrlDeepLinks();
     setupSSE();
-  }
-
-  document.getElementById('override-btn').addEventListener('click', () => {
-    sessionStorage.setItem('override', 'true');
-    openGates();
-  });
-
-  const rsvpForm = document.getElementById('rsvp-form');
-  if (rsvpForm) {
-    rsvpForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const alias = document.getElementById('rsvp-alias').value.trim();
-      const city = document.getElementById('rsvp-city').value.trim();
-      const goalForTonight = document.getElementById('rsvp-goal').value.trim();
-      await fetch('/api/rsvp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alias, city, goalForTonight })
-      });
-      rsvpForm.reset();
-      showToast(`🌙 Spot reserved for @${alias} in ${city}!`);
-    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -595,17 +650,21 @@
     });
 
     // Header Controls
-    document.getElementById('lock-btn').addEventListener('click', () => {
-      sessionStorage.removeItem('override');
-      screens.club.classList.remove('active');
-      screens.vault.classList.add('active');
-    });
-    document.getElementById('locate-me-btn').addEventListener('click', () => {
-      navigateToPage(1);
-      setTimeout(() => NightMap.locateUser(true), 250);
-    });
-    document.getElementById('btn-rain').addEventListener('click', toggleRain);
-    document.getElementById('btn-lofi').addEventListener('click', toggleLofi);
+    const lockBtn = document.getElementById('lock-btn');
+    if (lockBtn) {
+      lockBtn.addEventListener('click', () => openLandingAuthPortal('register'));
+    }
+    const locateMeBtn = document.getElementById('locate-me-btn');
+    if (locateMeBtn) {
+      locateMeBtn.addEventListener('click', () => {
+        navigateToPage(1);
+        setTimeout(() => NightMap.locateUser(true), 250);
+      });
+    }
+    const btnRain = document.getElementById('btn-rain');
+    if (btnRain) btnRain.addEventListener('click', toggleRain);
+    const btnLofi = document.getElementById('btn-lofi');
+    if (btnLofi) btnLofi.addEventListener('click', toggleLofi);
 
     // Forms
     document.getElementById('checkin-form').addEventListener('submit', handleCheckIn);
@@ -2034,11 +2093,14 @@
 
     if (!idToLoad) {
       container.innerHTML = `
-        <div class="feed-card text-center" style="padding:14px;">
-          <div style="font-size:2rem;margin-bottom:4px;">🦉</div>
-          <h4 style="color:var(--accent);margin-bottom:4px;">Set Up Your 3AM Profile</h4>
-          <p class="text-muted" style="font-size:0.78rem;margin-bottom:10px;">Create your midnight persona so nearby Night Owls can find you.</p>
-          <button class="btn-primary w-100" onclick="window.__editMyProfile()">⚡ Create My Profile</button>
+        <div class="feed-card text-center" style="padding:18px 16px;">
+          <div style="font-size:2.2rem;margin-bottom:6px;">🦉</div>
+          <h4 style="color:var(--accent);margin-bottom:4px;font-size:1rem;">Set Up Your 3AM Profile</h4>
+          <p class="text-muted" style="font-size:0.79rem;margin-bottom:12px;">Create your permanent Night Owl account (with JWT session) to unlock mutual pins, socials &amp; 11 PM hunting.</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button class="btn-primary w-100" onclick="window.__openCreateProfilePortal('register')">🦉 Create Profile / Log In (Landing Portal)</button>
+            <button class="btn-outline w-100" onclick="window.__editMyProfile()">🌊 Or Quick Broadcast in Dive In</button>
+          </div>
         </div>
       `;
       return;
@@ -2303,22 +2365,46 @@
   }
 
   function startClocks() {
-    setInterval(() => {
+    function tickClock() {
       const now = new Date();
       const clockEl = document.getElementById('live-clock');
       if (clockEl) clockEl.textContent = now.toLocaleTimeString('en-US', { hour12: false });
-      const vaultCd = document.getElementById('vault-countdown');
-      if (vaultCd) {
-        const openAt = new Date();
-        openAt.setHours(23, 0, 0, 0);
-        if (now > openAt) openAt.setDate(openAt.getDate() + 1);
-        const diff = openAt - now;
-        const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
-        const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
-        const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
-        vaultCd.textContent = `${h}:${m}:${s}`;
+
+      const hr = now.getHours();
+      const isNightHuntOpen = (hr === 23 || hr < 5);
+      const timingStrip = document.getElementById('daytime-timing-strip');
+      if (timingStrip) {
+        timingStrip.style.display = isNightHuntOpen ? 'none' : 'flex';
       }
-    }, 1000);
+
+      const headingEl = document.getElementById('landing-countdown-heading');
+      if (headingEl) {
+        headingEl.textContent = isNightHuntOpen
+          ? '🟢 3AM GATES ARE OPEN NOW • SUNRISE WIPE IN'
+          : '⏳ NEXT 11:00 PM HUNT STARTS IN';
+      }
+
+      const targetTime = new Date(now);
+      if (isNightHuntOpen) {
+        if (hr === 23) targetTime.setDate(targetTime.getDate() + 1);
+        targetTime.setHours(5, 0, 0, 0);
+      } else {
+        targetTime.setHours(23, 0, 0, 0);
+      }
+
+      const diff = Math.max(0, targetTime - now);
+      const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+      const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+      const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+      const formatted = `${h}:${m}:${s}`;
+
+      const vaultCd = document.getElementById('vault-countdown');
+      if (vaultCd) vaultCd.textContent = formatted;
+      const inlineCd = document.getElementById('club-countdown-inline');
+      if (inlineCd) inlineCd.textContent = formatted;
+    }
+    tickClock();
+    setInterval(tickClock, 1000);
   }
 
   function setupSSE() {
