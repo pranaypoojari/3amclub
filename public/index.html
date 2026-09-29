@@ -89,7 +89,7 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
-  <link rel="stylesheet" href="/css/styles.css?v=20260929_5">
+  <link rel="stylesheet" href="/css/styles.css?v=20260929_6">
 </head>
 <body>
   <noscript>
@@ -126,7 +126,6 @@
         <a href="#safety-architecture">Mutual Pin Privacy</a>
       </div>
       <div class="landing-nav-actions">
-        <button type="button" class="btn-outline btn-sm" id="nav-explore-app">🔍 Explore App</button>
         <button type="button" class="btn-outline btn-sm" id="nav-go-login">🔑 Log In</button>
         <button type="button" class="btn-primary btn-sm btn-magnet" id="nav-go-signup">🦉 Create Profile</button>
       </div>
@@ -222,8 +221,8 @@
             <form id="landing-register-form" class="auth-form">
               <div class="form-row">
                 <div class="auth-field">
-                  <label>Your @Alias</label>
-                  <input type="text" id="reg-alias" placeholder="e.g. pranay_3am" maxlength="24" required>
+                  <label>Your @Alias <span id="reg-alias-status" class="field-avail-hint"></span></label>
+                  <input type="text" id="reg-alias" placeholder="e.g. pranay_3am" maxlength="24" autocomplete="username" required>
                 </div>
                 <div class="auth-field">
                   <label>City Radar</label>
@@ -240,12 +239,15 @@
 
               <div class="form-row">
                 <div class="auth-field">
-                  <label>Email</label>
-                  <input type="email" id="reg-email" placeholder="you@genz.club" required>
+                  <label>Email <span id="reg-email-status" class="field-avail-hint"></span></label>
+                  <input type="email" id="reg-email" placeholder="you@genz.club" autocomplete="email" required>
                 </div>
                 <div class="auth-field">
                   <label>Password</label>
-                  <input type="password" id="reg-password" placeholder="Min 6 characters" minlength="6" required>
+                  <div class="password-input-wrap">
+                    <input type="password" id="reg-password" placeholder="Min 6 characters" minlength="6" autocomplete="new-password" required>
+                    <button type="button" class="pwd-eye-btn" onclick="window.__togglePasswordVisibility('reg-password', this)" aria-label="Show or hide password" title="Show/Hide Password">👁️</button>
+                  </div>
                 </div>
               </div>
 
@@ -278,27 +280,19 @@
             <form id="landing-login-form" class="auth-form hidden">
               <div class="auth-field">
                 <label>@Alias or Email</label>
-                <input type="text" id="login-identifier" placeholder="@pranay_3am or you@genz.club" required>
+                <input type="text" id="login-identifier" placeholder="@pranay_3am or you@genz.club" autocomplete="username" required>
               </div>
               <div class="auth-field">
                 <label>Password</label>
-                <input type="password" id="login-password" placeholder="Your password" required>
+                <div class="password-input-wrap">
+                  <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" required>
+                  <button type="button" class="pwd-eye-btn" onclick="window.__togglePasswordVisibility('login-password', this)" aria-label="Show or hide password" title="Show/Hide Password">👁️</button>
+                </div>
               </div>
               <button type="submit" class="btn-primary w-100 btn-magnet auth-submit-btn" id="login-submit-btn">
                 ⚡ Log In &amp; Enter Radar
               </button>
             </form>
-
-            <div class="auth-divider"><span>OR EXPLORE NOW</span></div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <button type="button" class="btn-guest-hunt" id="btn-instant-demo-hunt">
-                ⚡ 1-Click Demo Profile
-              </button>
-              <button type="button" class="btn-outline" id="btn-explore-radar" style="padding:9px 10px;border-radius:10px;font-size:0.77rem;">
-                🔍 Explore App First →
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -365,13 +359,14 @@
         </div>
       </div>
       <div class="header-right">
-        <button type="button" id="btn-header-landing" class="header-pill-btn" title="View Landing Page & 11PM Countdown">🌙 Landing</button>
-        <button type="button" id="header-user-badge" class="header-pill-btn" style="border-color:rgba(139,92,246,0.45);color:#ddd6fe;" title="Create Profile or View Account">⚡ Create Profile</button>
-        <button type="button" id="btn-header-logout" class="header-pill-btn hidden" style="border-color:rgba(244,63,94,0.35);color:#fda4af;" title="Log Out of Account">Log Out</button>
-        <button id="btn-rain" class="header-pill-btn" title="Midnight Rain Ambience">🌧️ Rain</button>
-        <button id="btn-lofi" class="header-pill-btn" title="3AM Lofi Radio">🎵 Lofi</button>
-        <div class="live-clock" id="live-clock">03:00:00</div>
-        <button id="locate-me-btn" class="btn-icon" title="Center on My GPS">📍</button>
+        <button type="button" id="header-user-badge" class="header-pill-btn" style="border-color:rgba(139,92,246,0.45);color:#ddd6fe;" title="My Profile">@NightOwl</button>
+        <button id="btn-rain" class="header-pill-btn" title="Midnight Rain Ambience">🌧️</button>
+        <button id="btn-lofi" class="header-pill-btn" title="3AM Lofi Radio">🎵</button>
+        <button type="button" id="btn-header-settings" class="header-hamburger-btn" onclick="window.__openSettingsMenu()" aria-label="Open Settings Menu" title="Settings & Privacy">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
       </div>
     </header>
 
@@ -749,9 +744,9 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   
-  <script src="/js/reactbits.js?v=20260929_5"></script>
-  <script src="/js/map.js?v=20260929_5"></script>
-  <script src="/js/app.js?v=20260929_5"></script>
+  <script src="/js/reactbits.js?v=20260929_6"></script>
+  <script src="/js/map.js?v=20260929_6"></script>
+  <script src="/js/app.js?v=20260929_6"></script>
 
   <!-- Vercel Web Analytics (@vercel/analytics) & Speed Insights (@vercel/speed-insights) -->
   <script>

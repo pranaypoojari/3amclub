@@ -367,20 +367,32 @@ app.post('/api/auth/register', async (req, res) => {
     if (!rawAlias || rawAlias.length < 2) {
       return res.status(400).json({ error: 'Please choose an @alias (at least 2 characters).' });
     }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters.' });
     }
 
-    const existingRegistered = await NightOwl.findOne({
-      isRegisteredAccount: true,
-      $or: [
-        { alias: new RegExp(`^${rawAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-        ...(email ? [{ email }] : [])
-      ]
+    const escapedAlias = rawAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existingAlias = await NightOwl.findOne({
+      alias: new RegExp(`^${escapedAlias}$`, 'i')
     });
+    if (existingAlias) {
+      return res.status(409).json({
+        field: 'alias',
+        error: `Username @${rawAlias} is already taken. Please choose a different @alias.`
+      });
+    }
 
-    if (existingRegistered) {
-      return res.status(409).json({ error: 'That @alias or email is already claimed. Log in instead!' });
+    const existingEmail = await NightOwl.findOne({
+      email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+    });
+    if (existingEmail) {
+      return res.status(409).json({
+        field: 'email',
+        error: `Email "${email}" is already registered. Please log in or use another email.`
+      });
     }
 
     const { salt, hash } = hashPassword(password);
@@ -559,6 +571,54 @@ app.post('/api/auth/logout', async (req, res) => {
 
     clearAuthCookies(res);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/check-availability', async (req, res) => {
+  try {
+    const rawAlias = String(req.query.alias || '').replace(/[<>]/g, '').trim().replace(/^@+/, '');
+    const email = String(req.query.email || '').replace(/[<>]/g, '').trim().toLowerCase();
+    let aliasTaken = false;
+    let emailTaken = false;
+
+    if (rawAlias && rawAlias.length >= 2) {
+      const escaped = rawAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existing = await NightOwl.findOne({ alias: new RegExp(`^${escaped}$`, 'i') });
+      aliasTaken = Boolean(existing);
+    }
+    if (email && email.includes('@')) {
+      const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existingE = await NightOwl.findOne({ email: new RegExp(`^${escapedEmail}$`, 'i') });
+      emailTaken = Boolean(existingE);
+    }
+    res.json({ aliasTaken, emailTaken });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/delete-account', async (req, res) => {
+  try {
+    const { sessionId, owlId } = req.body;
+    let target = null;
+    if (sessionId) target = await NightOwl.findOne({ sessionId });
+    if (!target && owlId) target = await NightOwl.findById(owlId);
+    if (target) {
+      const idStr = String(target._id);
+      await Promise.all([
+        NightOwl.deleteOne({ _id: target._id }),
+        Follow.deleteMany({ $or: [{ followerId: target._id }, { followingId: target._id }] }),
+        LateNightRide.deleteMany({ ownerOwlId: target._id }),
+        Hangout.deleteMany({ ownerOwlId: target._id }),
+        Confession3AM.deleteMany({ authorOwlId: target._id }),
+        MidnightClink.deleteMany({ $or: [{ fromOwlId: target._id }, { toOwlId: target._id }] }),
+        MidnightWhisper.deleteMany({ $or: [{ fromOwlId: idStr }, { toOwlId: idStr }] })
+      ]);
+    }
+    clearAuthCookies(res);
+    res.json({ success: true, deleted: Boolean(target) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -964,7 +1024,15 @@ app.get('/api/stream', (req, res) => {
 app.get('/api/profile/:owlId', async (req, res) => {
   try {
     const { sessionId } = req.query;
-    const profile = await NightOwl.findById(req.params.owlId).lean();
+    let profile = null;
+    if (req.params.owlId === 'me' && sessionId) {
+      profile = await NightOwl.findOne({ sessionId }).lean();
+    } else {
+      profile = await NightOwl.findById(req.params.owlId).lean();
+      if (!profile && sessionId) {
+        profile = await NightOwl.findOne({ sessionId }).lean();
+      }
+    }
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
     let isFollowing = false;

@@ -143,7 +143,16 @@
         sessionId = data.user.sessionId;
         localStorage.setItem('3am_session_id', sessionId);
       }
+      localStorage.setItem('3am_my_profile', JSON.stringify(data.user));
+      const existingIdx = allOwls.findIndex(o => String(o._id) === String(data.user._id) || o.sessionId === data.user.sessionId);
+      if (existingIdx >= 0) {
+        allOwls[existingIdx] = data.user;
+      } else {
+        allOwls.unshift(data.user);
+      }
+      prefillCheckInForm(myOwl);
       updateHeaderUserBadge();
+      renderProfileTab(null);
     }
     scheduleTokenRefresh();
   }
@@ -156,6 +165,7 @@
     localStorage.removeItem('3am_access_token');
     localStorage.removeItem('3am_refresh_token');
     localStorage.removeItem('3am_session_id');
+    localStorage.removeItem('3am_my_profile');
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = null;
@@ -214,6 +224,17 @@
     }
   };
 
+  window.__togglePasswordVisibility = function(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    if (btnEl) {
+      btnEl.textContent = isHidden ? '🙈' : '👁️';
+      btnEl.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+    }
+  };
+
   function setupLandingAndAuth() {
     const tabRegister = document.getElementById('tab-auth-register');
     const tabLogin = document.getElementById('tab-auth-login');
@@ -222,9 +243,62 @@
     const errorBanner = document.getElementById('auth-error-banner');
     const navGoLogin = document.getElementById('nav-go-login');
     const navGoSignup = document.getElementById('nav-go-signup');
-    const navExploreApp = document.getElementById('nav-explore-app');
-    const btnExploreRadar = document.getElementById('btn-explore-radar');
     const authCard = document.getElementById('auth-portal-card');
+
+    let aliasAvailable = true;
+    let emailAvailable = true;
+    let availTimer = null;
+
+    const regAliasInput = document.getElementById('reg-alias');
+    const regEmailInput = document.getElementById('reg-email');
+    const aliasStatusEl = document.getElementById('reg-alias-status');
+    const emailStatusEl = document.getElementById('reg-email-status');
+
+    function triggerAvailabilityCheck() {
+      if (availTimer) clearTimeout(availTimer);
+      availTimer = setTimeout(async () => {
+        const aliasVal = regAliasInput ? regAliasInput.value.trim().replace(/^@+/, '') : '';
+        const emailVal = regEmailInput ? regEmailInput.value.trim().toLowerCase() : '';
+        if (!aliasVal && !emailVal) return;
+        try {
+          const qs = new URLSearchParams();
+          if (aliasVal.length >= 2) qs.set('alias', aliasVal);
+          if (emailVal.includes('@')) qs.set('email', emailVal);
+          const res = await fetch('/api/auth/check-availability?' + qs.toString());
+          if (!res.ok) return;
+          const data = await res.json();
+          if (aliasStatusEl) {
+            if (aliasVal.length < 2) {
+              aliasStatusEl.textContent = '';
+            } else if (data.aliasTaken) {
+              aliasAvailable = false;
+              aliasStatusEl.textContent = '✕ Taken';
+              aliasStatusEl.className = 'field-avail-hint taken';
+            } else {
+              aliasAvailable = true;
+              aliasStatusEl.textContent = '✓ Available';
+              aliasStatusEl.className = 'field-avail-hint ok';
+            }
+          }
+          if (emailStatusEl) {
+            if (!emailVal.includes('@')) {
+              emailStatusEl.textContent = '';
+            } else if (data.emailTaken) {
+              emailAvailable = false;
+              emailStatusEl.textContent = '✕ Already used';
+              emailStatusEl.className = 'field-avail-hint taken';
+            } else {
+              emailAvailable = true;
+              emailStatusEl.textContent = '✓ Available';
+              emailStatusEl.className = 'field-avail-hint ok';
+            }
+          }
+        } catch (_) {}
+      }, 260);
+    }
+
+    if (regAliasInput) regAliasInput.addEventListener('input', triggerAvailabilityCheck);
+    if (regEmailInput) regEmailInput.addEventListener('input', triggerAvailabilityCheck);
 
     function setAuthError(msg) {
       if (!errorBanner) return;
@@ -266,17 +340,6 @@
       });
     }
 
-    // Explore App buttons (lets user browse the radar anytime; hunting starts at 11 PM)
-    const handleExploreClick = async () => {
-      trackEvent('explore_app_clicked');
-      await openGates();
-      if (!myOwl) {
-        showToast('🔍 Exploring the 3AM Radar — Tap "⚡ Create Profile" anytime to claim your @alias!');
-      }
-    };
-    if (navExploreApp) navExploreApp.addEventListener('click', handleExploreClick);
-    if (btnExploreRadar) btnExploreRadar.addEventListener('click', handleExploreClick);
-
     // Emoji selector strip
     const emojiStrip = document.getElementById('reg-emoji-strip');
     const avatarInput = document.getElementById('reg-avatar');
@@ -295,6 +358,14 @@
       formRegister.addEventListener('submit', async (e) => {
         e.preventDefault();
         setAuthError('');
+        if (!aliasAvailable) {
+          setAuthError('That @alias is already taken. Please choose a unique username.');
+          return;
+        }
+        if (!emailAvailable) {
+          setAuthError('That email address is already registered. Please log in or use another email.');
+          return;
+        }
         const submitBtn = document.getElementById('reg-submit-btn');
         const origText = submitBtn ? submitBtn.textContent : '';
         if (submitBtn) {
@@ -1676,10 +1747,13 @@
 
       let found = sessionId ? allOwls.find(o => o.sessionId === sessionId) : null;
       if (found) {
-        myOwl = found;
+        myOwl = Object.assign({}, myOwl || {}, found);
         prefillCheckInForm(myOwl);
+      } else if (myOwl && sessionId) {
+        allOwls.unshift(myOwl);
       }
       updateHeaderUserBadge();
+      renderProfileTab(null);
 
       // Fetch user's social state (clinked IDs, mutual IDs, following IDs) + scoped private messages
       const [socialRes, msgsRes] = await Promise.all([
@@ -2227,12 +2301,18 @@
     if (modal) modal.remove();
     showToast('✅ Marked as Downloaded! 3AM Club Web App is ready.');
     renderProfileTab(null);
+    if (document.getElementById('settings-drawer-modal')) {
+      window.__openSettingsMenu();
+    }
   };
 
   window.__installWebApp = async function() {
     if (isWebAppInstalled()) {
       showToast('✅ You already have The 3AM Club Web App installed!');
       renderProfileTab(null);
+      if (document.getElementById('settings-drawer-modal')) {
+        window.__openSettingsMenu();
+      }
       return;
     }
     if (deferredInstallPrompt) {
@@ -2244,6 +2324,9 @@
           deferredInstallPrompt = null;
           showToast('🎉 3AM Club Web App Downloaded!');
           renderProfileTab(null);
+          if (document.getElementById('settings-drawer-modal')) {
+            window.__openSettingsMenu();
+          }
           return;
         }
       } catch (_) {}
@@ -2283,6 +2366,147 @@
     document.body.appendChild(modal);
   };
 
+  // ── TOP-RIGHT THREE-LINES (☰) SETTINGS & PRIVACY VIEW ──
+  window.__toggleAccountPrivacyFromSettings = async function() {
+    if (!myOwl || !sessionId) {
+      showToast('🦉 Create your profile first to customize privacy!');
+      return;
+    }
+    const nextType = myOwl.profileType === 'closed' ? 'open' : 'closed';
+    try {
+      const res = await fetch('/api/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          alias: myOwl.alias,
+          avatarEmoji: myOwl.avatarEmoji,
+          city: myOwl.city,
+          bio: myOwl.bio,
+          profileType: nextType
+        })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        myOwl = Object.assign({}, myOwl, updated, { profileType: nextType });
+        localStorage.setItem('3am_my_profile', JSON.stringify(myOwl));
+        showToast(nextType === 'closed' ? '🔒 Profile set to Private (Followers Only)' : '🔓 Profile set to Public (Open Radar)');
+        renderProfileTab(null);
+        window.__openSettingsMenu();
+      }
+    } catch (_) {}
+  };
+
+  window.__toggleExtendReachFromSettings = function() {
+    window.__toggleExtendReach();
+    window.__openSettingsMenu();
+  };
+
+  window.__deleteMyAccountAndData = async function() {
+    const confirmed = window.confirm(
+      '🗑️ Delete Your Data & Account?\n\nThis will permanently delete your 3AM Club profile, broadcasts, followers, and messages from our database. This action cannot be undone.'
+    );
+    if (!confirmed) return;
+    try {
+      await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          owlId: myOwl ? myOwl._id : null
+        })
+      });
+    } catch (_) {}
+    const modal = document.getElementById('settings-drawer-modal');
+    if (modal) modal.remove();
+    clearAuthSession();
+    localStorage.clear();
+    openLandingAuthPortal('register');
+    showToast('🗑️ All your account data & profile have been permanently deleted.');
+  };
+
+  window.__openSettingsMenu = function() {
+    const existing = document.getElementById('settings-drawer-modal');
+    if (existing) existing.remove();
+
+    const isPrivate = myOwl && myOwl.profileType === 'closed';
+    const isExtended = extendHomeReach;
+
+    const modal = document.createElement('div');
+    modal.id = 'settings-drawer-modal';
+    modal.className = 'settings-modal-backdrop';
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    modal.innerHTML = `
+      <div class="settings-drawer-sheet">
+        <div class="settings-sheet-header">
+          <div>
+            <h3 style="margin:0;font-size:1.02rem;color:#f4f4f6;">⚙️ Settings &amp; Privacy</h3>
+            <p style="margin:2px 0 0;font-size:0.73rem;color:#a1a1aa;">
+              ${myOwl ? `Signed in as <b style="color:#c4b5fd;">@${myOwl.alias}</b> (${myOwl.email || myOwl.city || 'Thane'})` : 'Manage your 3AM Club preferences'}
+            </p>
+          </div>
+          <button type="button" class="btn-outline" style="padding:4px 10px;font-size:0.78rem;" onclick="document.getElementById('settings-drawer-modal').remove()">✕</button>
+        </div>
+
+        <div class="settings-section-group">
+          <div class="settings-section-label">ACCOUNT &amp; PRIVACY</div>
+
+          <div class="settings-item-row">
+            <div>
+              <div class="settings-item-title">${isPrivate ? '🔒 Private Profile' : '🔓 Public Profile'}</div>
+              <div class="settings-item-sub">${isPrivate ? 'Only approved followers see your socials & broadcasts' : 'Anyone within 20 km can discover your broadcasts'}</div>
+            </div>
+            <button type="button" class="btn-outline settings-pill-action" onclick="window.__toggleAccountPrivacyFromSettings()">
+              Switch to ${isPrivate ? 'Public' : 'Private'}
+            </button>
+          </div>
+
+          <div class="settings-item-row">
+            <div>
+              <div class="settings-item-title">${isExtended ? '🌍 Extended Reach (>20 km)' : '📍 Local 20 km Radar'}</div>
+              <div class="settings-item-sub">${isExtended ? 'Showing public accounts outside 20 km on Home Feed' : 'Showing followers + public accounts within 20 km'}</div>
+            </div>
+            <button type="button" class="btn-outline settings-pill-action" onclick="window.__toggleExtendReachFromSettings()">
+              ${isExtended ? 'Limit to 20 km' : 'Extend >20 km'}
+            </button>
+          </div>
+
+          <div class="settings-item-row">
+            <div>
+              <div class="settings-item-title">✏️ Edit Profile &amp; Social Handles</div>
+              <div class="settings-item-sub">Update your 3 AM bio, Instagram, Spotify, Snapchat &amp; Discord</div>
+            </div>
+            <button type="button" class="btn-outline settings-pill-action" onclick="document.getElementById('settings-drawer-modal').remove(); navigateToPage(4); setTimeout(() => window.__toggleSocialsEditor(), 120);">
+              Edit Profile
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-section-group">
+          <div class="settings-section-label">WEB APP INSTALLATION</div>
+          ${buildProfileWebAppCardHtml()}
+        </div>
+
+        <div class="settings-section-group">
+          <div class="settings-section-label">SESSION &amp; DATA</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button type="button" class="btn-outline w-100 settings-logout-btn" onclick="document.getElementById('settings-drawer-modal').remove(); window.__logout3AM();">
+              🚪 Log Out of @${myOwl ? myOwl.alias : 'Account'}
+            </button>
+            <button type="button" class="btn-outline w-100 settings-delete-btn" onclick="window.__deleteMyAccountAndData()">
+              🗑️ Delete My Data &amp; Account Permanently
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  };
+
   // SECTION 4: COMPACT INSTAGRAM-STYLE PROFILE VIEW (MY PROFILE vs OTHER PROFILE)
   window.__renderMyProfile = function() {
     renderProfileTab(null);
@@ -2294,27 +2518,38 @@
 
     // Never fall back to a random stranger! Null targetOwlId always means MY OWN PROFILE.
     const isViewingSelf = !targetOwlId || (myOwl && String(targetOwlId) === String(myOwl._id));
-    const idToLoad = isViewingSelf ? (myOwl && myOwl._id) : targetOwlId;
+    const idToLoad = isViewingSelf ? 'me' : targetOwlId;
 
-    if (!idToLoad) {
+    if (isViewingSelf && !myOwl && !sessionId) {
       container.innerHTML = `
         <div class="feed-card text-center" style="padding:18px 16px;">
           <div style="font-size:2.2rem;margin-bottom:6px;">🦉</div>
           <h4 style="color:var(--accent);margin-bottom:4px;font-size:1rem;">Set Up Your 3AM Profile</h4>
-          <p class="text-muted" style="font-size:0.79rem;margin-bottom:12px;">Create your permanent Night Owl account (with JWT session) to unlock mutual pins, socials &amp; 11 PM hunting.</p>
+          <p class="text-muted" style="font-size:0.79rem;margin-bottom:12px;">Create your permanent Night Owl account to unlock mutual pins, socials &amp; 11 PM hunting.</p>
           <div style="display:flex;flex-direction:column;gap:8px;">
-            <button class="btn-primary w-100" onclick="window.__openCreateProfilePortal('register')">🦉 Create Profile / Log In (Landing Portal)</button>
-            <button class="btn-outline w-100" onclick="window.__editMyProfile()">🌊 Or Quick Broadcast in Dive In</button>
+            <button class="btn-primary w-100" onclick="window.__openCreateProfilePortal('register')">🦉 Create Profile / Log In</button>
           </div>
         </div>
-        ${buildProfileWebAppCardHtml()}
       `;
       return;
     }
 
     try {
-      const res = await fetch(`/api/profile/${idToLoad}${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''}`);
-      const profile = await res.json();
+      let fetchedProfile = null;
+      try {
+        const res = await fetch(`/api/profile/${idToLoad}${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''}`);
+        if (res.ok) {
+          fetchedProfile = await res.json();
+        }
+      } catch (_) {}
+
+      // Always prioritize live authenticated myOwl fields when viewing own profile so new accounts reflect immediately
+      const profile = isViewingSelf
+        ? Object.assign({}, fetchedProfile || {}, myOwl || {})
+        : (fetchedProfile || {});
+
+      if (!profile || !profile.alias) return;
+
       const isMe = isViewingSelf || (myOwl && String(myOwl._id) === String(profile._id));
 
       const socials = profile.socialLinks || {};
@@ -2334,8 +2569,14 @@
 
       const topContextBar = isMe
         ? `<div class="profile-context-bar">
-             <span style="color:var(--eerie-green);font-weight:700;font-size:0.74rem;">👤 MY 3AM PROFILE</span>
-             <span style="font-size:0.72rem;color:var(--text-secondary);">${profile.profileType === 'closed' ? '🔒 Private' : '🔓 Public'}</span>
+             <div style="display:flex;align-items:center;gap:8px;">
+               <span style="color:var(--eerie-green);font-weight:700;font-size:0.75rem;">👤 @${profile.alias}</span>
+               <span style="font-size:0.7rem;color:var(--text-secondary);">${profile.profileType === 'closed' ? '🔒 Private' : '🔓 Public'}</span>
+             </div>
+             <button type="button" class="profile-settings-trigger-btn" onclick="window.__openSettingsMenu()" title="Open Settings & Privacy">
+               <span class="hamburger-lines"><span></span><span></span><span></span></span>
+               <span>Settings</span>
+             </button>
            </div>`
         : `<div class="profile-context-bar">
              <button type="button" class="btn-outline" style="padding:3px 9px;font-size:0.7rem;" onclick="window.__renderMyProfile()">← Back to My Profile</button>
@@ -2423,24 +2664,6 @@
             ${socialChips || '<span class="text-muted" style="font-size:0.74rem;">No socials linked yet. Tap Edit Socials to add!</span>'}
           </div>
         </div>
-
-        ${buildProfileWebAppCardHtml()}
-
-        ${isMe ? `
-        <div class="feed-card compact-profile-card mt-1" style="border-color:rgba(16,185,129,0.28);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span style="font-size:0.74rem;font-weight:700;color:#6ee7b7;">🔐 JWT Auth Session (By GenZ • For GenZ)</span>
-            <span style="font-size:0.68rem;color:#a7f3d0;font-family:'JetBrains Mono',monospace;">ACTIVE • 15m / 30d</span>
-          </div>
-          <div style="font-size:0.73rem;color:var(--text-secondary);margin-bottom:8px;">
-            Signed in as <b>@${profile.alias}</b> • Access Token &amp; Refresh Token rotation enabled.
-          </div>
-          <div style="display:flex;gap:6px;">
-            <button type="button" class="btn-outline w-100" style="padding:6px 10px;font-size:0.74rem;" onclick="window.__manualRefreshJWT()">🔄 Rotate Refresh Token</button>
-            <button type="button" class="btn-outline w-100" style="padding:6px 10px;font-size:0.74rem;color:#fda4af;border-color:rgba(244,63,94,0.35);" onclick="window.__logout3AM()">🚪 Log Out</button>
-          </div>
-        </div>
-        ` : ''}
       `;
     } catch (err) {
       console.error(err);
