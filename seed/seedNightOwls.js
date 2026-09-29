@@ -203,11 +203,11 @@ async function generateSeedOwls(count = 100) {
 }
 
 async function seedData() {
-  await NightOwl.deleteMany({});
-  await Follow.deleteMany({});
-  await LateNightRide.deleteMany({});
-  await Hangout.deleteMany({});
-  await Confession3AM.deleteMany({});
+  const existingCount = await NightOwl.countDocuments();
+  if (existingCount > 0) {
+    console.log(`[Seed] Database already contains ${existingCount} Night Owls — skipping destructive re-seed.`);
+    return;
+  }
 
   const owls = await generateSeedOwls(100);
   const savedOwls = await NightOwl.insertMany(owls);

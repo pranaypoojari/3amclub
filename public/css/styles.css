@@ -2057,6 +2057,132 @@ button {
   background: #7c3aed;
 }
 
+/* ── Home Feed Radius Filter & Extend Reach Bar (20 km) ── */
+.home-reach-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(16, 185, 129, 0.06));
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
 
+.hrb-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
 
+.hrb-icon {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
 
+.hrb-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f4f4f6;
+  line-height: 1.25;
+}
+
+.hrb-sub {
+  font-size: 0.72rem;
+  color: #a1a1aa;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.hrb-toggle-btn {
+  background: rgba(139, 92, 246, 0.2);
+  color: #ddd6fe;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.hrb-toggle-btn:hover {
+  background: rgba(139, 92, 246, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.hrb-toggle-btn.active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+}
+
+/* ── Always-Visible Custom Scrollbars on Both Web & Mobile Phone View ── */
+.landing-scroll-container,
+.page-scroll-inner,
+.dm-messages-scroll,
+.dm-thread-list {
+  overflow-y: scroll !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin !important;
+  scrollbar-color: #8b5cf6 rgba(18, 18, 28, 0.75) !important;
+}
+
+.landing-scroll-container::-webkit-scrollbar,
+.page-scroll-inner::-webkit-scrollbar,
+.dm-messages-scroll::-webkit-scrollbar,
+.dm-thread-list::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  display: block !important;
+  -webkit-appearance: none !important;
+}
+
+.landing-scroll-container::-webkit-scrollbar-track,
+.page-scroll-inner::-webkit-scrollbar-track,
+.dm-messages-scroll::-webkit-scrollbar-track,
+.dm-thread-list::-webkit-scrollbar-track {
+  background: rgba(18, 18, 28, 0.75) !important;
+  border-radius: 999px !important;
+}
+
+.landing-scroll-container::-webkit-scrollbar-thumb,
+.page-scroll-inner::-webkit-scrollbar-thumb,
+.dm-messages-scroll::-webkit-scrollbar-thumb,
+.dm-thread-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8b5cf6, #6d28d9) !important;
+  border-radius: 999px !important;
+  min-height: 36px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+@media (max-width: 768px) {
+  .home-reach-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .hrb-toggle-btn {
+    width: 100%;
+    text-align: center;
+    padding: 8px 14px;
+  }
+
+  .landing-scroll-container::-webkit-scrollbar,
+  .page-scroll-inner::-webkit-scrollbar,
+  .dm-messages-scroll::-webkit-scrollbar,
+  .dm-thread-list::-webkit-scrollbar {
+    width: 5px !important;
+    display: block !important;
+  }
+}

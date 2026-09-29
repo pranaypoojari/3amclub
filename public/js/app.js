@@ -1,4 +1,13 @@
 (function() {
+  // Evict legacy hardcoded @Dead session so user starts cleanly on the Landing & Auth Portal
+  if (localStorage.getItem('3am_auth_v3_migrated') !== 'true') {
+    localStorage.removeItem('3am_session_id');
+    localStorage.removeItem('3am_my_profile');
+    localStorage.removeItem('3am_access_token');
+    localStorage.removeItem('3am_refresh_token');
+    localStorage.setItem('3am_auth_v3_migrated', 'true');
+  }
+
   let sessionId = localStorage.getItem('3am_session_id') || null;
   let accessToken = localStorage.getItem('3am_access_token') || null;
   let refreshToken = localStorage.getItem('3am_refresh_token') || null;
@@ -16,6 +25,7 @@
 
   let currentPageIndex = 0; // 0: Home, 1: Search Map, 2: Dive In, 3: Messages, 4: Profile
   let currentHomeFilter = 'all'; // all | rides | hangouts | wall
+  let extendReachBeyond20Km = false; // Default false: Home shows Followers + Public accounts within 20 km
   let currentLegendFilter = 'all';
   let activeChatOwl = null;
   let inRequestsView = false;
@@ -1265,24 +1275,96 @@
     }).join('');
   }
 
+  window.__toggleExtendReach = function() {
+    extendReachBeyond20Km = !extendReachBeyond20Km;
+    renderHomeFeed();
+    showToast(
+      extendReachBeyond20Km
+        ? '🌍 Extended Reach Active — Showing Followers + Public Profiles beyond 20 km!'
+        : '📍 Local 20 km Radius Active — Showing Followers + Public Profiles within 20 km.'
+    );
+  };
+
+  function isOwlAllowedInHomeFeed(owlObj) {
+    if (!owlObj) return false;
+    const id = String(owlObj._id || owlObj.id);
+    if (myOwl && String(myOwl._id) === id) return true;
+
+    // 1. Always show last-night / tonight broadcast of people you follow!
+    const isFollowed = followingSet.has(id) || mutualSet.has(id);
+    if (isFollowed) return true;
+
+    // 2. Non-followed accounts MUST be Public ('open')
+    if (owlObj.profileType === 'closed') return false;
+
+    // 3. Must be within 20 km radius unless user turned on Extend Reach
+    const dist = typeof owlObj.distKm === 'number' ? owlObj.distKm : 0;
+    if (!extendReachBeyond20Km && dist > 20) return false;
+
+    return true;
+  }
+
+  function buildHomeReachBarHtml(visibleCount, hiddenBeyond20Count) {
+    const modeLabel = extendReachBeyond20Km
+      ? '🌍 Extended Reach (> 20 km) + Followers'
+      : '📡 Followers\' Last-Night Broadcasts + Public (< 20 km)';
+    const subLabel = extendReachBeyond20Km
+      ? `Showing people you follow + public accounts across all distances (${visibleCount} visible)`
+      : `Showing people you follow + public accounts within 20 km (${visibleCount} visible${hiddenBeyond20Count > 0 ? ` • ${hiddenBeyond20Count} outside 20 km` : ''})`;
+
+    return `
+      <div class="home-reach-bar">
+        <div class="hrb-info">
+          <div class="hrb-title">${modeLabel}</div>
+          <div class="hrb-sub">${subLabel}</div>
+        </div>
+        <button type="button" class="hrb-toggle-btn ${extendReachBeyond20Km ? 'active' : ''}" onclick="window.__toggleExtendReach()">
+          ${extendReachBeyond20Km ? '📍 Limit to 20 km' : '🌍 Extend Reach (>20 km)'}
+        </button>
+      </div>
+    `;
+  }
+
   function renderHomeFeed() {
     const feed = document.getElementById('home-unified-feed');
     if (!feed) return;
 
+    const allEnrichedOwls = getFilteredOwls();
+    const owlLookupById = new Map();
+    allEnrichedOwls.forEach(o => owlLookupById.set(String(o._id || o.id), o));
+
+    const hiddenBeyond20Count = allEnrichedOwls.filter(o => {
+      const id = String(o._id || o.id);
+      if (followingSet.has(id) || mutualSet.has(id)) return false;
+      return o.profileType !== 'closed' && (o.distKm || 0) > 20;
+    }).length;
+
+    const homeVisibleOwls = allEnrichedOwls
+      .filter(isOwlAllowedInHomeFeed)
+      .sort((a, b) => {
+        const aId = String(a._id || a.id);
+        const bId = String(b._id || b.id);
+        const aFollow = (followingSet.has(aId) || mutualSet.has(aId)) ? 1 : 0;
+        const bFollow = (followingSet.has(bId) || mutualSet.has(bId)) ? 1 : 0;
+        if (bFollow !== aFollow) return bFollow - aFollow; // Followers' broadcasts first!
+        return (a.distKm || 0) - (b.distKm || 0);
+      });
+
+    const reachBarHtml = buildHomeReachBarHtml(homeVisibleOwls.length, hiddenBeyond20Count);
+
     if (currentHomeFilter === 'rides') {
-      feed.innerHTML = buildRidesHtml();
+      feed.innerHTML = reachBarHtml + buildRidesHtml(owlLookupById);
       return;
     }
     if (currentHomeFilter === 'hangouts') {
-      feed.innerHTML = buildHangoutsHtml();
+      feed.innerHTML = reachBarHtml + buildHangoutsHtml(owlLookupById);
       return;
     }
     if (currentHomeFilter === 'wall') {
-      feed.innerHTML = buildWallHtml();
+      feed.innerHTML = reachBarHtml + buildWallHtml(owlLookupById);
       return;
     }
 
-    const owls = getFilteredOwls();
     const myInterests = myOwl && Array.isArray(myOwl.interests) ? myOwl.interests : [];
 
     // Render user's own latest posted thoughts & live broadcast card at the top of the Home feed
@@ -1343,7 +1425,7 @@
       </div>
     ` : '';
 
-    const owlCardsHtml = owls.map(o => {
+    const owlCardsHtml = homeVisibleOwls.map(o => {
       const id = String(o._id || o.id);
       const shared = (o.interests || []).filter(i => myInterests.includes(i));
       const isClosed = o.profileType === 'closed';
@@ -1352,10 +1434,17 @@
       const isPending = pendingSet.has(id);
       const hasClinked = clinkedSet.has(id);
       const distBadge = o.distKm < 1 ? `${Math.round(o.distKm * 1000)}m` : `${o.distKm.toFixed(1)} km`;
+      const isOutside20Km = (o.distKm || 0) > 20;
 
       const areaDisplay = isMutual
         ? `${o.neighborhood ? o.neighborhood + ', ' : ''}${o.city || 'Thane'} • ${distBadge}`
         : `${o.city || 'Thane'} (~${distBadge}) • 🔒 Exact pin hidden`;
+
+      const broadcastBadge = (isMutual || isFollowing)
+        ? '<span class="mutual-pill">👥 Following • Last Night Broadcast</span>'
+        : (isOutside20Km
+            ? '<span class="tag-pill" style="border-color:rgba(16,185,129,0.4);color:#6ee7b7;">🌍 Extended (>20 km)</span>'
+            : '<span class="tag-pill">🔓 Public (<20 km)</span>');
 
       const followBtnLabel = isMutual
         ? '✓ Mutual'
@@ -1367,10 +1456,10 @@
             <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="window.__viewProfile('${id}')">
               <div class="dm-avatar-circle">${o.avatarEmoji || '🦉'}</div>
               <div>
-                <div style="display:flex;align-items:center;gap:5px;">
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                   <span class="card-alias">@${o.alias}</span>
                   <span style="font-size:0.68rem;color:var(--text-muted);">${isClosed ? '🔒' : ''}</span>
-                  ${isMutual ? '<span class="mutual-pill">Mutual</span>' : ''}
+                  ${broadcastBadge}
                 </div>
                 <div class="card-meta">${areaDisplay}</div>
               </div>
@@ -1408,7 +1497,7 @@
       `;
     }).join('');
 
-    feed.innerHTML = myPostsHtml + myBroadcastCardHtml + owlCardsHtml;
+    feed.innerHTML = reachBarHtml + myPostsHtml + myBroadcastCardHtml + owlCardsHtml;
   }
 
   window.__locateOnMap = function(owlId) {
@@ -1423,8 +1512,14 @@
     setTimeout(() => NightMap.focus(owlId), 260);
   };
 
-  function buildRidesHtml() {
-    return allRides.map(r => {
+  function buildRidesHtml(owlLookupById) {
+    const list = owlLookupById
+      ? allRides.filter(r => {
+          const owner = owlLookupById.get(String(r.ownerOwlId));
+          return !owner || isOwlAllowedInHomeFeed(owner);
+        })
+      : allRides;
+    return list.map(r => {
       const isOffering = r.rideType === 'offering';
       const joinedNames = (r.joinedOwls || []).map(j => j.alias).join(', ');
       return `
@@ -1454,8 +1549,14 @@
     }).join('');
   }
 
-  function buildHangoutsHtml() {
-    return allHangouts.map(h => {
+  function buildHangoutsHtml(owlLookupById) {
+    const list = owlLookupById
+      ? allHangouts.filter(h => {
+          const owner = owlLookupById.get(String(h.ownerOwlId));
+          return !owner || isOwlAllowedInHomeFeed(owner);
+        })
+      : allHangouts;
+    return list.map(h => {
       const joinedCount = (h.joinedOwls || []).length;
       return `
         <div class="feed-card">
@@ -1487,8 +1588,8 @@
     const text = input.value.trim();
     if (!text) return;
     if (!sessionId) {
-      showToast('🌊 Dive In first to reply!');
-      navigateToPage(2);
+      showToast('🦉 Create your profile or log in first to reply!');
+      openLandingAuthPortal('register');
       return;
     }
     const res = await fetch(`/api/confessions/${confId}/reply`, {
@@ -1503,8 +1604,16 @@
     }
   };
 
-  function buildWallHtml() {
-    return allConfessions.map(c => {
+  function buildWallHtml(owlLookupById) {
+    const list = owlLookupById
+      ? allConfessions.filter(c => {
+          const authorId = String(c.authorOwlId || '');
+          if (myOwl && (authorId === String(myOwl._id) || c.authorAlias === myOwl.alias)) return true;
+          const owner = owlLookupById.get(authorId);
+          return !owner || isOwlAllowedInHomeFeed(owner);
+        })
+      : allConfessions;
+    return list.map(c => {
       const replies = Array.isArray(c.replies) ? c.replies : [];
       const repliesHtml = replies.length > 0
         ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:4px;">
@@ -1566,50 +1675,11 @@
       allConfessions = await confRes.json();
 
       let found = sessionId ? allOwls.find(o => o.sessionId === sessionId) : null;
-
-      // Auto-restore saved user profile if server re-seeded or first load
-      if (!found) {
-        const cachedProfileRaw = localStorage.getItem('3am_my_profile');
-        const defaultPayload = cachedProfileRaw ? JSON.parse(cachedProfileRaw) : {
-          sessionId: sessionId || ('owl_me_' + Math.random().toString(36).substring(2, 10)),
-          alias: 'Dead',
-          pronouns: 'he/him',
-          bio: 'Up at 3 AM exploring the radar 🌙',
-          city: 'Thane',
-          neighborhood: 'Hiranandani Estate',
-          auraType: 'vibe',
-          beverage: '☕ Coffee',
-          interests: ['coding', 'music', 'gaming'],
-          lookingFor: ['late-night-ride', 'just-vibing'],
-          socialLinks: {
-            instagram: { handle: 'dead.3am', isPublic: true },
-            spotify: { handle: 'dead_vibes', isPublic: true }
-          },
-          profileType: 'open',
-          avatarEmoji: '🦉',
-          statusText: 'Wide awake in Thane ⚡',
-          currentTrack: 'After Hours - The Weeknd',
-          lat: 19.2183,
-          lng: 72.9781
-        };
-        const restoreRes = await fetch('/api/checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(defaultPayload)
-        });
-        if (restoreRes.ok) {
-          found = await restoreRes.json();
-          sessionId = found.sessionId;
-          localStorage.setItem('3am_session_id', sessionId);
-          localStorage.setItem('3am_my_profile', JSON.stringify(defaultPayload));
-          allOwls.unshift(found);
-        }
-      }
-
       if (found) {
         myOwl = found;
         prefillCheckInForm(myOwl);
       }
+      updateHeaderUserBadge();
 
       // Fetch user's social state (clinked IDs, mutual IDs, following IDs) + scoped private messages
       const [socialRes, msgsRes] = await Promise.all([

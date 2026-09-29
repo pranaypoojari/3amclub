@@ -13,7 +13,22 @@ const Hangout = require('./models/Hangout');
 const MidnightClink = require('./models/MidnightClink');
 const Confession3AM = require('./models/Confession3AM');
 const NightlyCapsule = require('./models/NightlyCapsule');
+const { attachInMemoryFallback } = require('./models/inMemoryFallback');
 const { seedData } = require('./seed/seedNightOwls');
+
+const whisperSchema = new mongoose.Schema({
+  fromOwlId: String,
+  fromAlias: String,
+  fromAvatar: String,
+  toOwlId: String,
+  toAlias: String,
+  text: String,
+  isRequest: { type: Boolean, default: false },
+  requestStatus: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'accepted' },
+  isRead: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now }
+});
+const MidnightWhisper = mongoose.models.MidnightWhisper || mongoose.model('MidnightWhisper', whisperSchema);
 
 const app = express();
 app.disable('x-powered-by');
@@ -97,11 +112,14 @@ app.get(['/api/health', '/healthz'], async (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public'), {
-  etag: true,
-  lastModified: true,
+  etag: false,
+  lastModified: false,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Clear-Site-Data', '"cache"');
     }
   }
 }));
@@ -134,32 +152,34 @@ try {
   }
 } catch (_) {}
 
+let usingInMemoryStore = false;
+
 async function connectDB() {
-  if (mongoose.connection.readyState === 1) return;
+  if (mongoose.connection.readyState === 1 || usingInMemoryStore) return;
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/the3amclub';
   try {
+    if (!process.env.MONGODB_URI && process.env.VERCEL) {
+      throw new Error('No MONGODB_URI on Vercel — using instant in-memory store');
+    }
     console.log('Attempting MongoDB connection...');
     await mongoose.connect(mongoUri, {
       dbName: 'the3amclub',
-      serverSelectionTimeoutMS: process.env.MONGODB_URI ? 8000 : 2000
+      serverSelectionTimeoutMS: process.env.MONGODB_URI ? 3500 : 1200
     });
     console.log('Connected to MongoDB instance');
   } catch (err) {
-    console.log('Starting embedded MongoDB Server...');
-    const mongoServer = await MongoMemoryServer.create({
-      instance: {
-        ...(process.env.VERCEL ? {} : { port: 27017 }),
-        dbName: 'the3amclub',
-        dbPath: dataDir,
-        storageEngine: 'wiredTiger'
-      },
-      binary: {
-        version: '7.0.0'
-      }
-    });
-    const uri = mongoServer.getUri();
-    await mongoose.connect(uri + 'the3amclub');
-    console.log('Connected to embedded MongoDB Server');
+    console.log('Activating instant in-memory Mongoose store (' + err.message + ')');
+    attachInMemoryFallback([
+      NightOwl,
+      Follow,
+      LateNightRide,
+      Hangout,
+      MidnightClink,
+      Confession3AM,
+      NightlyCapsule,
+      MidnightWhisper
+    ]);
+    usingInMemoryStore = true;
   }
 }
 
@@ -169,7 +189,7 @@ function ensureBooted() {
     bootPromise = (async () => {
       await connectDB();
       await seedData();
-      console.log('Database seeded.');
+      console.log('Database ready & seeded.');
     })().catch(err => {
       console.error('Boot error:', err);
       bootPromise = null;
@@ -177,8 +197,6 @@ function ensureBooted() {
   }
   return bootPromise;
 }
-
-ensureBooted();
 
 app.use('/api', async (req, res, next) => {
   await ensureBooted();
@@ -1317,19 +1335,7 @@ app.delete('/api/hangouts/:id', async (req, res) => {
 // ----------------------------------------------------
 // Midnight Whispers (Direct Messages / Chat & Message Requests)
 // ----------------------------------------------------
-const whisperSchema = new mongoose.Schema({
-  fromOwlId: String,
-  fromAlias: String,
-  fromAvatar: String,
-  toOwlId: String,
-  toAlias: String,
-  text: String,
-  isRequest: { type: Boolean, default: false },
-  requestStatus: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'accepted' },
-  isRead: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now }
-});
-const MidnightWhisper = mongoose.models.MidnightWhisper || mongoose.model('MidnightWhisper', whisperSchema);
+// MidnightWhisper model defined at top of server.js
 
 async function areMutualFollowers(owlIdA, owlIdB) {
   if (!owlIdA || !owlIdB) return false;

@@ -8,8 +8,11 @@
   ],
   "routes": [
     {
-      "src": "/(?!_vercel/)(.*)",
-      "dest": "/server.js"
+      "src": "/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+      }
     }
   ]
 }
