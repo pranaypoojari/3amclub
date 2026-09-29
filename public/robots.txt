@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Allow: /?tab=home
+Allow: /?tab=map
+Allow: /?tab=dive
+Allow: /?tab=rides
+Allow: /?tab=hangouts
+Disallow: /api/messages
+Disallow: /api/my-social-state
+Disallow: /api/block
+
+Sitemap: https://the3amclub.in/sitemap.xml

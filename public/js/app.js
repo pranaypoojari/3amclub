@@ -69,6 +69,47 @@
     openGates();
   }
 
+  function handleUrlDeepLinks() {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = (params.get('tab') || '').toLowerCase();
+    const cityParam = params.get('city');
+
+    if (tabParam === 'map' || tabParam === 'search') {
+      navigateToPage(1);
+      document.title = 'Live Midnight Radar Map — The 3AM Club';
+    } else if (tabParam === 'dive') {
+      navigateToPage(2);
+      document.title = 'Dive In & Broadcast Your Vibe — The 3AM Club';
+    } else if (tabParam === 'messages') {
+      navigateToPage(3);
+      document.title = 'Midnight Whispers DM — The 3AM Club';
+    } else if (tabParam === 'profile') {
+      navigateToPage(4);
+      document.title = 'Night Owl Profile — The 3AM Club';
+    } else if (tabParam === 'rides') {
+      navigateToPage(0);
+      currentHomeFilter = 'rides';
+      document.querySelectorAll('.story-ring[data-feed-mode]').forEach(r => r.classList.toggle('active', r.dataset.feedMode === 'rides'));
+      renderHomeFeed();
+      document.title = 'Late Night Rides & Drives — The 3AM Club';
+    } else if (tabParam === 'hangouts') {
+      navigateToPage(0);
+      currentHomeFilter = 'hangouts';
+      document.querySelectorAll('.story-ring[data-feed-mode]').forEach(r => r.classList.toggle('active', r.dataset.feedMode === 'hangouts'));
+      renderHomeFeed();
+      document.title = 'Spontaneous 3AM Hangouts — The 3AM Club';
+    }
+
+    if (cityParam) {
+      document.title = `${cityParam} Night Owls & Late Night Drives — The 3AM Club`;
+      const searchInput = document.getElementById('map-user-search');
+      if (searchInput) {
+        searchInput.value = cityParam;
+        searchInput.dispatchEvent(new Event('input'));
+      }
+    }
+  }
+
   async function openGates() {
     screens.vault.classList.remove('active');
     screens.club.classList.add('active');
@@ -76,6 +117,7 @@
       applyFilterAndRender();
     });
     await fetchAllData();
+    handleUrlDeepLinks();
     setupSSE();
   }
 

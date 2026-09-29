@@ -1,0 +1,19 @@
+{
+  "name": "The 3AM Club — Midnight Social Radar",
+  "short_name": "The 3AM Club",
+  "description": "Time-gated late-night social radar, interest matching, spontaneous night drives, and 3 AM hangouts for Night Owls.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090d",
+  "theme_color": "#8b5cf6",
+  "orientation": "portrait-primary",
+  "categories": ["social", "lifestyle", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

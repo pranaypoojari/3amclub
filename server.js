@@ -19,12 +19,83 @@ app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(self), microphone=(), camera=()');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
   next();
 });
 app.use(cors());
 app.use(express.json({ limit: '200kb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Dynamic SEO Sitemap & Robots routes
+app.get('/sitemap.xml', (req, res) => {
+  const host = process.env.SITE_URL || `${req.protocol}://${req.get('host') || 'the3amclub.in'}`;
+  const today = new Date().toISOString().split('T')[0];
+  const pages = [
+    { path: '/', freq: 'daily', prio: '1.0' },
+    { path: '/?tab=home', freq: 'hourly', prio: '0.9' },
+    { path: '/?tab=map', freq: 'hourly', prio: '0.9' },
+    { path: '/?tab=dive', freq: 'daily', prio: '0.8' },
+    { path: '/?tab=rides', freq: 'hourly', prio: '0.8' },
+    { path: '/?tab=hangouts', freq: 'hourly', prio: '0.8' },
+    { path: '/?city=Thane', freq: 'daily', prio: '0.8' },
+    { path: '/?city=Mumbai', freq: 'daily', prio: '0.8' },
+    { path: '/?city=Bangalore', freq: 'daily', prio: '0.8' },
+    { path: '/?city=Pune', freq: 'daily', prio: '0.7' },
+    { path: '/?city=Delhi', freq: 'daily', prio: '0.7' },
+    { path: '/?city=Hyderabad', freq: 'daily', prio: '0.7' }
+  ];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    pages.map(p => `  <url>\n    <loc>${host}${p.path}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${p.freq}</changefreq>\n    <priority>${p.prio}</priority>\n  </url>`).join('\n') +
+    `\n</urlset>`;
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(xml);
+});
+
+app.get('/robots.txt', (req, res) => {
+  const host = process.env.SITE_URL || `${req.protocol}://${req.get('host') || 'the3amclub.in'}`;
+  const robots = [
+    'User-agent: *',
+    'Allow: /',
+    'Allow: /?tab=home',
+    'Allow: /?tab=map',
+    'Allow: /?tab=dive',
+    'Allow: /?tab=rides',
+    'Allow: /?tab=hangouts',
+    'Disallow: /api/messages',
+    'Disallow: /api/my-social-state',
+    'Disallow: /api/block',
+    '',
+    `Sitemap: ${host}/sitemap.xml`
+  ].join('\n');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(robots);
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.sendFile(path.join(__dirname, 'public', 'favicon.svg'));
+});
+
+app.get(['/api/health', '/healthz'], async (req, res) => {
+  const dbReady = mongoose.connection.readyState === 1;
+  const activeOwls = dbReady ? await NightOwl.countDocuments({ isOnline: true }).catch(() => 0) : 0;
+  res.status(dbReady ? 200 : 503).json({
+    status: dbReady ? 'ok' : 'starting',
+    uptimeSeconds: Math.round(process.uptime()),
+    database: dbReady ? 'connected' : 'connecting',
+    activeOwls,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 let clients = [];
 function broadcastSSE(event, data) {
@@ -1090,8 +1161,27 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
+const PORT = Number(process.env.PORT) || 3000;
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+function gracefulShutdown(signal) {
+  console.log(`Received ${signal}. Closing server gracefully...`);
+  clients.forEach(c => {
+    try { c.res.end(); } catch (_) {}
+  });
+  clients = [];
+  server.close(async () => {
+    try { await mongoose.connection.close(); } catch (_) {}
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Promise Rejection:', reason);
+});
+
 

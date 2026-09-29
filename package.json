@@ -8,7 +8,14 @@
     "dev": "node server.js",
     "seed": "node seed/seedNightOwls.js"
   },
-  "keywords": ["night-owl", "3am", "social", "map", "lofi"],
+  "keywords": ["night-owl", "3am", "social-radar", "late-night-drives", "thane", "mumbai", "india"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pranaypoojari/3amclub.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
