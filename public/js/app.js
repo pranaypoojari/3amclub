@@ -468,6 +468,46 @@
     }
   };
 
+  window.__declineMsgRequest = async function(partnerOwlId) {
+    if (!sessionId) return;
+    const res = await fetch('/api/messages/decline-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, partnerOwlId })
+    });
+    if (res.ok) {
+      allMessages = allMessages.filter(m =>
+        String(m.fromOwlId) !== String(partnerOwlId) && String(m.toOwlId) !== String(partnerOwlId)
+      );
+      activeChatOwl = null;
+      const layout = document.querySelector('.messages-layout');
+      if (layout) layout.classList.remove('chat-open');
+      showToast('✕ Message request declined & removed.');
+      await fetchAllData();
+      renderMessagesInbox();
+      renderActiveChat();
+    }
+  };
+
+  window.__blockOwl = async function(targetOwlId) {
+    if (!sessionId || !targetOwlId) return;
+    const res = await fetch('/api/block', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, targetOwlId })
+    });
+    if (res.ok) {
+      mutualSet.delete(String(targetOwlId));
+      followingSet.delete(String(targetOwlId));
+      if (activeChatOwl && String(activeChatOwl._id || activeChatOwl.id) === String(targetOwlId)) {
+        activeChatOwl = null;
+      }
+      showToast('🚫 User blocked. Hidden from your feed, map, and messages.');
+      await fetchAllData();
+      if (currentPageIndex === 4) renderProfileTab(null);
+    }
+  };
+
   function updateUnreadIndicators() {
     const myId = myOwl ? String(myOwl._id) : '';
     const unreadRequests = allMessages.filter(m =>
@@ -652,11 +692,15 @@
         input.placeholder = `Message @${activeChatOwl.alias}...`;
         if (iceBar) iceBar.classList.remove('hidden');
       } else if (theirSentMsgs.length > 0) {
-        // Incoming request from non-mutual: let user Accept to reply & unlock Pin
+        // Incoming request from non-mutual: let user Accept, Decline, or Block
         reqBanner.classList.remove('hidden');
         reqBanner.innerHTML = `
-          <span>👋 <b>@${activeChatOwl.alias}</b> sent you a message request.</span>
-          <button type="button" class="btn-primary" style="padding:4px 10px;font-size:0.72rem;" onclick="window.__acceptMsgRequest('${partnerId}')">✓ Accept</button>
+          <span style="flex:1;">👋 <b>@${activeChatOwl.alias}</b> sent a request.</span>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button type="button" class="btn-primary" style="padding:4px 10px;font-size:0.72rem;" onclick="window.__acceptMsgRequest('${partnerId}')">✓ Accept</button>
+            <button type="button" class="btn-outline" style="padding:4px 9px;font-size:0.72rem;color:#fda4af;" onclick="window.__declineMsgRequest('${partnerId}')">✕ Decline</button>
+            <button type="button" class="btn-outline" style="padding:4px 8px;font-size:0.72rem;color:#f43f5e;" onclick="window.__blockOwl('${partnerId}')" title="Block User">🚫</button>
+          </div>
         `;
         input.disabled = true;
         sendBtn.disabled = true;
@@ -961,25 +1005,65 @@
     }).join('');
   }
 
+  window.__submitReply = async function(confId) {
+    const input = document.getElementById(`reply-input-${confId}`);
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    if (!sessionId) {
+      showToast('🌊 Dive In first to reply!');
+      navigateToPage(2);
+      return;
+    }
+    const res = await fetch(`/api/confessions/${confId}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, text })
+    });
+    if (res.ok) {
+      input.value = '';
+      showToast('💬 Reply posted!');
+      await fetchAllData();
+    }
+  };
+
   function buildWallHtml() {
-    return allConfessions.map(c => `
-      <div class="feed-card">
-        <div class="feed-card-header" style="justify-content:space-between;">
-          <div>
-            <span class="card-alias">@${c.authorAlias}</span>
-            <span class="card-meta"> • ${c.city || ''}</span>
+    return allConfessions.map(c => {
+      const replies = Array.isArray(c.replies) ? c.replies : [];
+      const repliesHtml = replies.length > 0
+        ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:4px;">
+            ${replies.slice(-4).map(rep => `
+              <div style="font-size:0.74rem;color:var(--text-secondary);">
+                <b style="color:var(--text-primary);">@${rep.authorAlias}:</b> ${rep.text}
+              </div>
+            `).join('')}
+           </div>`
+        : '';
+
+      return `
+        <div class="feed-card">
+          <div class="feed-card-header" style="justify-content:space-between;">
+            <div>
+              <span class="card-alias">@${c.authorAlias}</span>
+              <span class="card-meta"> • ${c.city || ''}</span>
+            </div>
+            <span class="card-meta">${new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-          <span class="card-meta">${new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <div class="card-body">${c.content}</div>
+          <div class="clink-row">
+            <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'fire')">🔥 (${(c.reactions && c.reactions.fire) || 0})</button>
+            <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'clink')">☕ (${(c.reactions && c.reactions.clink) || 0})</button>
+            <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'skull')">💀 (${(c.reactions && c.reactions.skull) || 0})</button>
+            <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'hug')">🫂 (${(c.reactions && c.reactions.hug) || 0})</button>
+          </div>
+          ${repliesHtml}
+          <div style="display:flex;gap:6px;margin-top:7px;">
+            <input type="text" id="reply-input-${c._id}" placeholder="Reply to @${c.authorAlias}..." maxlength="140" style="margin-bottom:0;padding:5px 9px;font-size:0.74rem;height:30px;">
+            <button type="button" class="btn-outline" style="padding:4px 10px;font-size:0.72rem;height:30px;white-space:nowrap;" onclick="window.__submitReply('${c._id}')">💬 Reply</button>
+          </div>
         </div>
-        <div class="card-body">${c.content}</div>
-        <div class="clink-row">
-          <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'fire')">🔥 (${(c.reactions && c.reactions.fire) || 0})</button>
-          <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'clink')">☕ (${(c.reactions && c.reactions.clink) || 0})</button>
-          <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'skull')">💀 (${(c.reactions && c.reactions.skull) || 0})</button>
-          <button class="clink-btn" onclick="window.__reactConfession('${c._id}', 'hug')">🫂 (${(c.reactions && c.reactions.hug) || 0})</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   function renderRidesList() {
@@ -993,11 +1077,12 @@
 
   async function fetchAllData() {
     try {
+      const qs = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
       const [owlsRes, ridesRes, hangoutsRes, confRes] = await Promise.all([
-        fetch('/api/owls'),
+        fetch(`/api/owls${qs}`),
         fetch('/api/rides'),
         fetch('/api/hangouts'),
-        fetch(`/api/confessions${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''}`)
+        fetch(`/api/confessions${qs}`)
       ]);
       allOwls = await owlsRes.json();
       allRides = await ridesRes.json();
@@ -1050,10 +1135,10 @@
         prefillCheckInForm(myOwl);
       }
 
-      // Fetch user's social state (clinked IDs, mutual IDs, following IDs) + messages
+      // Fetch user's social state (clinked IDs, mutual IDs, following IDs) + scoped private messages
       const [socialRes, msgsRes] = await Promise.all([
         fetch(`/api/my-social-state?sessionId=${encodeURIComponent(sessionId || '')}`),
-        fetch('/api/messages')
+        fetch(`/api/messages?sessionId=${encodeURIComponent(sessionId || '')}`)
       ]);
       if (socialRes.ok) {
         const socialData = await socialRes.json();
@@ -1574,8 +1659,9 @@
 
       const actionButtonsHtml = isMe
         ? `<div style="display:flex;gap:6px;margin-top:8px;">
-             <button class="btn-primary w-100" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__editMyProfile()">✏️ Edit My Profile</button>
-             <button class="btn-outline" style="padding:6px 10px;font-size:0.76rem;white-space:nowrap;" onclick="window.__locateOnMap('${profile._id}')">📍 My Pin</button>
+             <button class="btn-primary w-100" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__editMyProfile()">🌊 Edit Broadcast</button>
+             <button class="btn-outline w-100" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__toggleSocialsEditor()">🔗 Edit Socials & Bio</button>
+             <button class="btn-outline" style="padding:6px 10px;font-size:0.76rem;white-space:nowrap;" onclick="window.__locateOnMap('${profile._id}')">📍 Pin</button>
            </div>`
         : `<div style="display:flex;gap:6px;margin-top:8px;">
              <button class="btn-primary w-100" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__followOwl('${profile._id}')">
@@ -1583,7 +1669,27 @@
              </button>
              <button class="btn-outline w-100" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__openDMWith('${profile._id}')">💬 Message</button>
              <button class="btn-outline" style="padding:6px 10px;font-size:0.76rem;" onclick="window.__locateOnMap('${profile._id}')">🗺️</button>
+             <button class="btn-outline" style="padding:6px 10px;font-size:0.76rem;color:#fda4af;" onclick="window.__blockOwl('${profile._id}')" title="Block User">🚫</button>
            </div>`;
+
+      const socialsEditorHtml = isMe ? `
+        <div id="profile-socials-editor" class="feed-card compact-profile-card mt-1 hidden">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:0.76rem;font-weight:700;color:var(--text-primary);">🔗 Edit Bio & Social Handles</span>
+            <button type="button" class="btn-outline" style="padding:2px 8px;font-size:0.68rem;" onclick="window.__toggleSocialsEditor()">✕</button>
+          </div>
+          <input type="text" id="prof-edit-bio" value="${(profile.bio || '').replace(/"/g, '&quot;')}" placeholder="Your 3 AM bio..." maxlength="160" style="margin-bottom:6px;padding:6px 9px;font-size:0.76rem;">
+          <div class="compact-grid-2" style="margin-bottom:6px;">
+            <input type="text" id="prof-edit-ig" value="${(socials.instagram?.handle || '').replace(/"/g, '&quot;')}" placeholder="Instagram @handle" style="margin-bottom:0;padding:6px 9px;font-size:0.75rem;">
+            <input type="text" id="prof-edit-spot" value="${(socials.spotify?.handle || '').replace(/"/g, '&quot;')}" placeholder="Spotify handle" style="margin-bottom:0;padding:6px 9px;font-size:0.75rem;">
+          </div>
+          <div class="compact-grid-2" style="margin-bottom:6px;">
+            <input type="text" id="prof-edit-snap" value="${(socials.snapchat?.handle || '').replace(/"/g, '&quot;')}" placeholder="Snapchat @handle" style="margin-bottom:0;padding:6px 9px;font-size:0.75rem;">
+            <input type="text" id="prof-edit-disc" value="${(socials.discord?.handle || '').replace(/"/g, '&quot;')}" placeholder="Discord tag" style="margin-bottom:0;padding:6px 9px;font-size:0.75rem;">
+          </div>
+          <button type="button" class="btn-primary w-100" style="padding:7px 10px;font-size:0.76rem;" onclick="window.__saveMySocials()">✓ Save Bio & Social Handles</button>
+        </div>
+      ` : '';
 
       container.innerHTML = `
         ${topContextBar}
@@ -1617,6 +1723,8 @@
           ${actionButtonsHtml}
         </div>
 
+        ${socialsEditorHtml}
+
         <!-- Compact Combined Vibe, Interests & Socials Card -->
         <div class="feed-card compact-profile-card mt-1">
           <div style="font-size:0.74rem;font-weight:700;color:var(--text-secondary);margin-bottom:5px;">🔥 Interests & Tonight's Vibe</div>
@@ -1627,7 +1735,7 @@
 
           <div style="font-size:0.74rem;font-weight:700;color:var(--text-secondary);margin-bottom:5px;">🔗 Socials ${profile.profileType === 'closed' ? '(Followers Only 🔒)' : ''}</div>
           <div class="compact-socials-grid">
-            ${socialChips || '<span class="text-muted" style="font-size:0.74rem;">No socials linked yet. Tap Edit Profile to add!</span>'}
+            ${socialChips || '<span class="text-muted" style="font-size:0.74rem;">No socials linked yet. Tap Edit Socials to add!</span>'}
           </div>
         </div>
       `;
@@ -1635,6 +1743,46 @@
       console.error(err);
     }
   }
+
+  window.__toggleSocialsEditor = function() {
+    const el = document.getElementById('profile-socials-editor');
+    if (el) el.classList.toggle('hidden');
+  };
+
+  window.__saveMySocials = async function() {
+    if (!sessionId || !myOwl) return;
+    const bio = document.getElementById('prof-edit-bio')?.value.trim() || '';
+    const socialLinks = {
+      instagram: { handle: document.getElementById('prof-edit-ig')?.value.trim().replace(/^@/, '') || '', isPublic: true },
+      spotify: { handle: document.getElementById('prof-edit-spot')?.value.trim().replace(/^@/, '') || '', isPublic: true },
+      snapchat: { handle: document.getElementById('prof-edit-snap')?.value.trim().replace(/^@/, '') || '', isPublic: true },
+      discord: { handle: document.getElementById('prof-edit-disc')?.value.trim() || '', isPublic: true },
+      twitter: { handle: myOwl.socialLinks?.twitter?.handle || '', isPublic: true }
+    };
+
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        bio,
+        pronouns: myOwl.pronouns,
+        avatarEmoji: myOwl.avatarEmoji,
+        profileType: myOwl.profileType,
+        interests: myOwl.interests,
+        lookingFor: myOwl.lookingFor,
+        socialLinks,
+        statusText: myOwl.statusText,
+        currentTrack: myOwl.currentTrack
+      })
+    });
+    if (res.ok) {
+      myOwl = await res.json();
+      showToast('✓ Bio & Social Handles saved!');
+      await renderProfileTab(null);
+      await fetchAllData();
+    }
+  };
 
   // Audio & Clocks
   function toggleRain() {

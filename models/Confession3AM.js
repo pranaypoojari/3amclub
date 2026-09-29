@@ -31,10 +31,20 @@ const confession3AMSchema = new mongoose.Schema({
 
   reactions: {
     fire: { type: Number, default: 0, min: 0 },    // 🔥
+    heart: { type: Number, default: 0, min: 0 },   // 💜
+    ghost: { type: Number, default: 0, min: 0 },   // 👻
     clink: { type: Number, default: 0, min: 0 },   // ☕
-    skull: { type: Number, default: 0, min: 0 },    // 💀
-    hug: { type: Number, default: 0, min: 0 }       // 🫂
+    skull: { type: Number, default: 0, min: 0 },   // 💀
+    hug: { type: Number, default: 0, min: 0 }      // 🫂
   },
+
+  replies: [{
+    authorOwlId: { type: String },
+    authorAlias: { type: String, required: true },
+    authorAvatar: { type: String, default: '🦉' },
+    text: { type: String, required: true, maxlength: 140 },
+    createdAt: { type: Date, default: Date.now }
+  }],
 
   isPinned: {
     type: Boolean,

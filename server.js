@@ -90,8 +90,36 @@ boot().catch(err => {
 
 
 // ----------------------------------------------------
-// Existing endpoints
+// Per-IP Write Rate Limiter & Location Privacy Helpers
 // ----------------------------------------------------
+const ipHits = new Map();
+function writeRateLimit(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'local';
+  const now = Date.now();
+  const entry = ipHits.get(ip) || { count: 0, resetAt: now + 60000 };
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + 60000;
+  }
+  entry.count += 1;
+  ipHits.set(ip, entry);
+  if (entry.count > 80) {
+    return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+  }
+  next();
+}
+app.use(['/api/checkin', '/api/confessions', '/api/messages', '/api/clink', '/api/follow', '/api/block'], writeRateLimit);
+
+function deterministicFuzz(idStr, coord, scale = 0.018) {
+  let hash = 0;
+  const s = String(idStr || 'owl');
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash |= 0;
+  }
+  const normalized = ((Math.abs(hash) % 1000) / 500) - 1; // [-1, 1]
+  return Number((coord + normalized * scale).toFixed(4));
+}
 
 app.get('/api/status', async (req, res) => {
   const activeOwls = await NightOwl.countDocuments({ isOnline: true });
@@ -99,8 +127,59 @@ app.get('/api/status', async (req, res) => {
 });
 
 app.get('/api/owls', async (req, res) => {
-  const owls = await NightOwl.find({ isOnline: true }).sort({ checkedInAt: -1 });
-  res.json(owls);
+  try {
+    const { sessionId } = req.query;
+    const requester = sessionId ? await NightOwl.findOne({ sessionId }).lean() : null;
+    const myId = requester ? String(requester._id) : null;
+    const blockedSet = new Set((requester?.blockedOwlIds || []).map(String));
+
+    // Find requester's mutual follower IDs so exact coordinates are ONLY sent for mutuals
+    const mutualSet = new Set();
+    if (requester) {
+      const [myFollows, theirFollows] = await Promise.all([
+        Follow.find({ followerId: requester._id, status: 'accepted' }).lean(),
+        Follow.find({ followingId: requester._id, status: 'accepted' }).lean()
+      ]);
+      const followingIds = new Set(myFollows.map(f => String(f.followingId)));
+      for (const rev of theirFollows) {
+        const fid = String(rev.followerId);
+        if (followingIds.has(fid)) mutualSet.add(fid);
+      }
+    }
+
+    const rawOwls = await NightOwl.find({ isOnline: true }).sort({ checkedInAt: -1 }).lean();
+    const safeOwls = rawOwls
+      .filter(o => !blockedSet.has(String(o._id)))
+      .map(o => {
+        const idStr = String(o._id);
+        const isMe = myId && idStr === myId;
+        const isMutual = isMe || mutualSet.has(idStr);
+
+        const clone = { ...o };
+        // Never leak another user's sessionId token in public API responses
+        if (!isMe) {
+          delete clone.sessionId;
+        }
+
+        // Server-side coordinate fuzzing for non-mutuals
+        if (!isMutual && clone.coordinates) {
+          const rawLat = clone.coordinates.lat || 19.2183;
+          const rawLng = clone.coordinates.lng || 72.9781;
+          clone.coordinates = {
+            lat: deterministicFuzz(idStr + '_lat', rawLat, 0.018),
+            lng: deterministicFuzz(idStr + '_lng', rawLng, 0.018)
+          };
+          clone.exactLocationLocked = true;
+        } else {
+          clone.exactLocationLocked = false;
+        }
+        return clone;
+      });
+
+    res.json(safeOwls);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/checkin', async (req, res) => {
@@ -308,6 +387,65 @@ app.post('/api/confessions/:id/react', async (req, res) => {
   }
 });
 
+app.post('/api/confessions/:id/reply', async (req, res) => {
+  try {
+    const { sessionId, text } = req.body;
+    const cleanReply = String(text || '').replace(/[<>]/g, '').trim().substring(0, 140);
+    if (!cleanReply) return res.status(400).json({ error: 'Reply text required' });
+
+    const owl = sessionId ? await NightOwl.findOne({ sessionId }) : null;
+    if (!owl) return res.status(401).json({ error: 'Check in first to reply' });
+
+    const conf = await Confession3AM.findById(req.params.id);
+    if (!conf) return res.status(404).json({ error: 'Post not found' });
+
+    conf.replies = conf.replies || [];
+    conf.replies.push({
+      authorOwlId: String(owl._id),
+      authorAlias: owl.alias,
+      authorAvatar: owl.avatarEmoji || '🦉',
+      text: cleanReply,
+      createdAt: new Date()
+    });
+    await conf.save();
+    broadcastSSE('confession', conf);
+    res.json(conf);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/block', async (req, res) => {
+  try {
+    const { sessionId, targetOwlId } = req.body;
+    if (!sessionId || !targetOwlId) return res.status(400).json({ error: 'Missing fields' });
+    const me = await NightOwl.findOne({ sessionId });
+    if (!me) return res.status(401).json({ error: 'Not found' });
+
+    const targetStr = String(targetOwlId);
+    me.blockedOwlIds = Array.from(new Set([...(me.blockedOwlIds || []), targetStr]));
+    await me.save();
+
+    // Remove any follows & pending message requests between them
+    await Follow.deleteMany({
+      $or: [
+        { followerId: me._id, followingId: targetOwlId },
+        { followerId: targetOwlId, followingId: me._id }
+      ]
+    });
+    await MidnightWhisper.deleteMany({
+      $or: [
+        { fromOwlId: targetStr, toOwlId: String(me._id) },
+        { fromOwlId: String(me._id), toOwlId: targetStr }
+      ]
+    });
+
+    res.json({ success: true, blockedOwlIds: me.blockedOwlIds });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/rsvp', async (req, res) => {
   res.json({ success: true });
 });
@@ -341,6 +479,7 @@ app.get('/api/profile/:owlId', async (req, res) => {
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
     let isFollowing = false;
+    let isMutual = false;
     let isOwner = false;
     if (sessionId) {
       const requester = await NightOwl.findOne({ sessionId });
@@ -348,11 +487,25 @@ app.get('/api/profile/:owlId', async (req, res) => {
         if (requester._id.toString() === profile._id.toString()) {
           isOwner = true;
           isFollowing = true;
+          isMutual = true;
         } else {
           const follow = await Follow.findOne({ followerId: requester._id, followingId: profile._id, status: 'accepted' });
           if (follow) isFollowing = true;
+          isMutual = await areMutualFollowers(requester._id, profile._id);
         }
       }
+    }
+
+    if (!isOwner) {
+      delete profile.sessionId;
+    }
+    if (!isMutual && profile.coordinates) {
+      const idStr = String(profile._id);
+      profile.coordinates = {
+        lat: deterministicFuzz(idStr + '_lat', profile.coordinates.lat || 19.2183, 0.018),
+        lng: deterministicFuzz(idStr + '_lng', profile.coordinates.lng || 72.9781, 0.018)
+      };
+      profile.exactLocationLocked = true;
     }
 
     if (!isFollowing && !isOwner && profile.socialLinks) {
@@ -791,8 +944,27 @@ app.get('/api/my-social-state', async (req, res) => {
 
 app.get('/api/messages', async (req, res) => {
   try {
-    const msgs = await MidnightWhisper.find().sort({ createdAt: 1 }).limit(300);
-    res.json(msgs);
+    const { sessionId } = req.query;
+    if (!sessionId) {
+      return res.json([]);
+    }
+    const me = await NightOwl.findOne({ sessionId }).lean();
+    if (!me) {
+      return res.json([]);
+    }
+    const myId = String(me._id);
+    const blockedSet = new Set((me.blockedOwlIds || []).map(String));
+
+    const msgs = await MidnightWhisper.find({
+      requestStatus: { $ne: 'rejected' },
+      $or: [
+        { fromOwlId: myId },
+        { toOwlId: myId }
+      ]
+    }).sort({ createdAt: 1 }).limit(300).lean();
+
+    const filteredMsgs = msgs.filter(m => !blockedSet.has(String(m.fromOwlId)) && !blockedSet.has(String(m.toOwlId)));
+    res.json(filteredMsgs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -889,6 +1061,25 @@ app.post('/api/messages/accept-request', async (req, res) => {
     );
 
     broadcastSSE('follow', { followerId: me._id, followingId: partner._id, status: 'accepted' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/messages/decline-request', async (req, res) => {
+  try {
+    const { sessionId, partnerOwlId } = req.body;
+    const me = await NightOwl.findOne({ sessionId });
+    if (!me || !partnerOwlId) return res.status(404).json({ error: 'Not found' });
+
+    await MidnightWhisper.deleteMany({
+      $or: [
+        { fromOwlId: String(partnerOwlId), toOwlId: String(me._id) },
+        { fromOwlId: String(me._id), toOwlId: String(partnerOwlId) }
+      ]
+    });
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
