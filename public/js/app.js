@@ -1,5 +1,8 @@
 (function() {
   let sessionId = localStorage.getItem('3am_session_id') || null;
+  let accessToken = localStorage.getItem('3am_access_token') || null;
+  let refreshToken = localStorage.getItem('3am_refresh_token') || null;
+  let refreshTimer = null;
   let myOwl = null;
   let allOwls = [];
   let allRides = [];
@@ -25,9 +28,18 @@
   lofiAudio.loop = true;
 
   const screens = {
+    landing: document.getElementById('landing-screen'),
     vault: document.getElementById('vault-screen'),
     club: document.getElementById('club-screen')
   };
+
+  function trackEvent(eventName, props = {}) {
+    try {
+      if (typeof window.va === 'function') {
+        window.va('event', { name: eventName, ...props });
+      }
+    } catch (_) {}
+  }
 
   const cityCoords = {
     'thane': { lat: 19.2183, lng: 72.9781 },
@@ -53,9 +65,329 @@
   }
   window.__showToast = showToast;
 
+  function updateHeaderUserBadge() {
+    const badge = document.getElementById('header-user-badge');
+    if (!badge) return;
+    if (myOwl && myOwl.alias) {
+      badge.textContent = `🔐 @${myOwl.alias}`;
+      badge.style.display = 'inline-flex';
+    }
+  }
+
+  function saveAuthSession(data) {
+    if (data.accessToken) {
+      accessToken = data.accessToken;
+      localStorage.setItem('3am_access_token', accessToken);
+    }
+    if (data.refreshToken) {
+      refreshToken = data.refreshToken;
+      localStorage.setItem('3am_refresh_token', refreshToken);
+    }
+    if (data.user) {
+      myOwl = data.user;
+      if (data.user.sessionId) {
+        sessionId = data.user.sessionId;
+        localStorage.setItem('3am_session_id', sessionId);
+      }
+      updateHeaderUserBadge();
+    }
+    scheduleTokenRefresh();
+  }
+
+  function clearAuthSession() {
+    accessToken = null;
+    refreshToken = null;
+    sessionId = null;
+    myOwl = null;
+    localStorage.removeItem('3am_access_token');
+    localStorage.removeItem('3am_refresh_token');
+    localStorage.removeItem('3am_session_id');
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  async function attemptSilentRefresh() {
+    if (!refreshToken) return false;
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data && data.accessToken) {
+        saveAuthSession(data);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function scheduleTokenRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    // Rotate Access + Refresh tokens every 12 minutes (before 15-min access token expiry)
+    refreshTimer = setInterval(() => {
+      attemptSilentRefresh();
+    }, 12 * 60 * 1000);
+  }
+
+  async function logoutAndReturnToLanding() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken, sessionId })
+      });
+    } catch (_) {}
+    clearAuthSession();
+    if (screens.club) screens.club.classList.remove('active');
+    if (screens.vault) screens.vault.classList.remove('active');
+    if (screens.landing) screens.landing.classList.add('active');
+    showToast('👋 Logged out safely. See you at 3 AM!');
+    trackEvent('user_logout');
+  }
+  window.__logout3AM = logoutAndReturnToLanding;
+  window.__manualRefreshJWT = async function() {
+    const ok = await attemptSilentRefresh();
+    if (ok) {
+      showToast('🔄 JWT Access Token + Refresh Token rotated!');
+    } else {
+      showToast('⚠️ Please log in with an account to rotate JWT tokens.');
+    }
+  };
+
+  function setupLandingAndAuth() {
+    const tabRegister = document.getElementById('tab-auth-register');
+    const tabLogin = document.getElementById('tab-auth-login');
+    const formRegister = document.getElementById('landing-register-form');
+    const formLogin = document.getElementById('landing-login-form');
+    const errorBanner = document.getElementById('auth-error-banner');
+    const navGoLogin = document.getElementById('nav-go-login');
+    const navGoSignup = document.getElementById('nav-go-signup');
+    const authCard = document.getElementById('auth-portal-card');
+
+    function setAuthError(msg) {
+      if (!errorBanner) return;
+      if (!msg) {
+        errorBanner.classList.add('hidden');
+        errorBanner.textContent = '';
+      } else {
+        errorBanner.textContent = msg;
+        errorBanner.classList.remove('hidden');
+      }
+    }
+
+    function switchAuthMode(mode) {
+      setAuthError('');
+      const isLogin = mode === 'login';
+      if (tabRegister) tabRegister.classList.toggle('active', !isLogin);
+      if (tabLogin) tabLogin.classList.toggle('active', isLogin);
+      if (formRegister) formRegister.classList.toggle('hidden', isLogin);
+      if (formLogin) formLogin.classList.toggle('hidden', !isLogin);
+      const heading = document.getElementById('auth-portal-heading');
+      if (heading) {
+        heading.textContent = isLogin ? 'Welcome Back, Night Owl 🔑' : "Join Tonight's Hunt 🦉";
+      }
+    }
+
+    if (tabRegister) tabRegister.addEventListener('click', () => switchAuthMode('register'));
+    if (tabLogin) tabLogin.addEventListener('click', () => switchAuthMode('login'));
+
+    if (navGoLogin) {
+      navGoLogin.addEventListener('click', () => {
+        switchAuthMode('login');
+        if (authCard) authCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+    if (navGoSignup) {
+      navGoSignup.addEventListener('click', () => {
+        switchAuthMode('register');
+        if (authCard) authCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+
+    // Emoji selector strip
+    const emojiStrip = document.getElementById('reg-emoji-strip');
+    const avatarInput = document.getElementById('reg-avatar');
+    if (emojiStrip && avatarInput) {
+      emojiStrip.querySelectorAll('.auth-emoji-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          emojiStrip.querySelectorAll('.auth-emoji-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          avatarInput.value = btn.dataset.emoji || '🦉';
+        });
+      });
+    }
+
+    // Register form submit
+    if (formRegister) {
+      formRegister.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        const submitBtn = document.getElementById('reg-submit-btn');
+        const origText = submitBtn ? submitBtn.textContent : '';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '🦉 Minting JWT & Entering Radar...';
+        }
+        try {
+          const alias = document.getElementById('reg-alias').value.trim();
+          const city = document.getElementById('reg-city').value;
+          const email = document.getElementById('reg-email').value.trim();
+          const password = document.getElementById('reg-password').value;
+          const avatarEmoji = document.getElementById('reg-avatar').value || '🦉';
+          const bio = document.getElementById('reg-bio').value.trim();
+
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              alias,
+              city,
+              email,
+              password,
+              avatarEmoji,
+              bio,
+              auraType: 'vibe',
+              interests: ['late-drives', 'music', 'coding']
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setAuthError(data.error || 'Could not create account.');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = origText;
+            }
+            return;
+          }
+          saveAuthSession(data);
+          trackEvent('signup_success', { city });
+          showToast(`🦉 Welcome @${data.user.alias}! JWT Access + Refresh Token active.`);
+          await openGates();
+        } catch (err) {
+          setAuthError('Network error. Please try again.');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = origText;
+          }
+        }
+      });
+    }
+
+    // Login form submit
+    if (formLogin) {
+      formLogin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        const submitBtn = document.getElementById('login-submit-btn');
+        const origText = submitBtn ? submitBtn.textContent : '';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '⚡ Verifying Credentials...';
+        }
+        try {
+          const identifier = document.getElementById('login-identifier').value.trim();
+          const password = document.getElementById('login-password').value;
+
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, password })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setAuthError(data.error || 'Login failed.');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = origText;
+            }
+            return;
+          }
+          saveAuthSession(data);
+          trackEvent('login_success');
+          showToast(`⚡ Welcome back @${data.user.alias}! Hunting radar unlocked.`);
+          await openGates();
+        } catch (err) {
+          setAuthError('Network error. Please try again.');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = origText;
+          }
+        }
+      });
+    }
+
+    // 1-Click Guest Pass Demo Hunt (creates a JWT-backed guest account immediately)
+    const guestBtn = document.getElementById('btn-instant-demo-hunt');
+    if (guestBtn) {
+      guestBtn.addEventListener('click', async () => {
+        setAuthError('');
+        const origText = guestBtn.textContent;
+        guestBtn.disabled = true;
+        guestBtn.textContent = '⚡ Issuing Guest JWT Pass...';
+        try {
+          const randTag = Math.floor(100 + Math.random() * 899);
+          const guestAlias = `Hunter_${randTag}`;
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              alias: guestAlias,
+              city: 'Thane',
+              email: `hunter${randTag}@3amclub.in`,
+              password: `guestpass_${randTag}`,
+              avatarEmoji: '⚡',
+              bio: 'Down for a 3 AM drive & cold coffee ☕',
+              auraType: 'vibe',
+              interests: ['late-drives', 'music', 'coffee']
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.accessToken) {
+            saveAuthSession(data);
+            trackEvent('guest_hunt_started');
+            showToast(`⚡ Entered as @${data.user.alias} with JWT Session!`);
+            await openGates();
+          }
+        } catch (_) {
+          setAuthError('Could not start guest session.');
+        } finally {
+          guestBtn.disabled = false;
+          guestBtn.textContent = origText;
+        }
+      });
+    }
+
+    // Header logout & brand landing trigger
+    const logoutBtn = document.getElementById('btn-header-logout');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => {
+        logoutAndReturnToLanding();
+      });
+    }
+
+    const brandHomeTrigger = document.getElementById('brand-home-trigger');
+    if (brandHomeTrigger) {
+      brandHomeTrigger.addEventListener('click', () => {
+        if (screens.club) screens.club.classList.remove('active');
+        if (screens.landing) screens.landing.classList.add('active');
+        showToast('💡 Viewing Landing Page — Log in or click Guest Pass to return to radar.');
+      });
+    }
+  }
+
   function init() {
     initVaultParticles();
     startClocks();
+    setupLandingAndAuth();
     setupNavigationAndSwipe();
     setupSearchAndLegend();
     setupDiveInTabs();
@@ -64,9 +396,50 @@
     checkTimeAndGate();
   }
 
-  function checkTimeAndGate() {
-    // Testing phase: bypass time-gate and open Club portal directly
-    openGates();
+  async function checkTimeAndGate() {
+    // Update live online count on Landing Page
+    try {
+      const sRes = await fetch('/api/status');
+      const sData = await sRes.json();
+      const landingCounter = document.getElementById('landing-online-count');
+      if (landingCounter && sData.activeOwls) {
+        landingCounter.textContent = `${sData.activeOwls}+ Owls Hunting`;
+      }
+    } catch (_) {}
+
+    // Check if user already has a valid JWT Access Token or Refresh Token
+    if (accessToken) {
+      try {
+        const meRes = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData.authenticated && meData.user) {
+            myOwl = meData.user;
+            sessionId = meData.user.sessionId || sessionId;
+            if (sessionId) localStorage.setItem('3am_session_id', sessionId);
+            updateHeaderUserBadge();
+            scheduleTokenRefresh();
+            await openGates();
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Try silent refresh if refreshToken exists
+    if (refreshToken) {
+      const refreshed = await attemptSilentRefresh();
+      if (refreshed) {
+        await openGates();
+        return;
+      }
+    }
+
+    // Otherwise stay on the ReactBits Interactive GenZ Landing Page so they can Create Account or Log In!
+    if (screens.landing) screens.landing.classList.add('active');
+    if (screens.club) screens.club.classList.remove('active');
   }
 
   function handleUrlDeepLinks() {
@@ -111,8 +484,10 @@
   }
 
   async function openGates() {
-    screens.vault.classList.remove('active');
-    screens.club.classList.add('active');
+    if (screens.landing) screens.landing.classList.remove('active');
+    if (screens.vault) screens.vault.classList.remove('active');
+    if (screens.club) screens.club.classList.add('active');
+    updateHeaderUserBadge();
     NightMap.init('map', () => {
       applyFilterAndRender();
     });
@@ -1780,6 +2155,22 @@
             ${socialChips || '<span class="text-muted" style="font-size:0.74rem;">No socials linked yet. Tap Edit Socials to add!</span>'}
           </div>
         </div>
+
+        ${isMe ? `
+        <div class="feed-card compact-profile-card mt-1" style="border-color:rgba(16,185,129,0.28);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:0.74rem;font-weight:700;color:#6ee7b7;">🔐 JWT Auth Session (By GenZ • For GenZ)</span>
+            <span style="font-size:0.68rem;color:#a7f3d0;font-family:'JetBrains Mono',monospace;">ACTIVE • 15m / 30d</span>
+          </div>
+          <div style="font-size:0.73rem;color:var(--text-secondary);margin-bottom:8px;">
+            Signed in as <b>@${profile.alias}</b> • Access Token &amp; Refresh Token rotation enabled.
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn-outline w-100" style="padding:6px 10px;font-size:0.74rem;" onclick="window.__manualRefreshJWT()">🔄 Rotate Refresh Token</button>
+            <button type="button" class="btn-outline w-100" style="padding:6px 10px;font-size:0.74rem;color:#fda4af;border-color:rgba(244,63,94,0.35);" onclick="window.__logout3AM()">🚪 Log Out</button>
+          </div>
+        </div>
+        ` : ''}
       `;
     } catch (err) {
       console.error(err);

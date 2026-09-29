@@ -8,7 +8,15 @@
     "dev": "node server.js",
     "seed": "node seed/seedNightOwls.js"
   },
-  "keywords": ["night-owl", "3am", "social-radar", "late-night-drives", "thane", "mumbai", "india"],
+  "keywords": [
+    "night-owl",
+    "3am",
+    "social-radar",
+    "late-night-drives",
+    "thane",
+    "mumbai",
+    "india"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/pranaypoojari/3amclub.git"
@@ -18,9 +26,11 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
-    "mongoose": "^8.8.0",
-    "mongodb-memory-server-core": "^10.1.0"
+    "mongodb-memory-server-core": "^10.1.0",
+    "mongoose": "^8.8.0"
   }
 }

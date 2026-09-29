@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { MongoMemoryServer } = require('mongodb-memory-server-core');
 
 const NightOwl = require('./models/NightOwl');
@@ -196,7 +197,379 @@ function writeRateLimit(req, res, next) {
   }
   next();
 }
-app.use(['/api/checkin', '/api/confessions', '/api/messages', '/api/clink', '/api/follow', '/api/block'], writeRateLimit);
+app.use(['/api/checkin', '/api/confessions', '/api/messages', '/api/clink', '/api/follow', '/api/block', '/api/auth'], writeRateLimit);
+
+// Local development no-op fallback for Vercel Analytics & Speed Insights edge scripts
+app.get(['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'], (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.send('/* Vercel Edge Analytics active on production deployment */');
+});
+
+// ----------------------------------------------------
+// JWT Access Token (15m) + Refresh Token (30d) Engine
+// ----------------------------------------------------
+const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || '3amclub_genz_access_secret_key_2026_v1';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || '3amclub_genz_refresh_secret_key_2026_v1';
+const ACCESS_TOKEN_TTL_SEC = 15 * 60; // 15 minutes
+const REFRESH_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
+
+function base64UrlEncode(input) {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(String(input));
+  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function base64UrlDecode(str) {
+  let s = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  return Buffer.from(s, 'base64').toString('utf8');
+}
+
+function signJwt(payload, secret, ttlSec) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const body = { ...payload, iat: now, exp: now + ttlSec };
+  const unsigned = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(body))}`;
+  const sig = crypto.createHmac('sha256', secret).update(unsigned).digest();
+  return `${unsigned}.${base64UrlEncode(sig)}`;
+}
+
+function verifyJwt(token, secret) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [h, b, s] = parts;
+  const unsigned = `${h}.${b}`;
+  const expectedSig = base64UrlEncode(crypto.createHmac('sha256', secret).update(unsigned).digest());
+  if (s !== expectedSig) return null;
+  try {
+    const payload = JSON.parse(base64UrlDecode(b));
+    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function hashSecretToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.pbkdf2Sync(String(password), salt, 10000, 64, 'sha512').toString('hex');
+  return { salt, hash };
+}
+
+function parseCookies(req) {
+  const raw = req.headers?.cookie || '';
+  const out = {};
+  raw.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx > 0) {
+      const k = pair.slice(0, idx).trim();
+      const v = decodeURIComponent(pair.slice(idx + 1).trim());
+      out[k] = v;
+    }
+  });
+  return out;
+}
+
+function setAuthCookies(res, accessToken, refreshToken) {
+  const isProd = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
+  const secureFlag = isProd ? '; Secure' : '';
+  res.setHeader('Set-Cookie', [
+    `3am_access_token=${encodeURIComponent(accessToken)}; Path=/; Max-Age=${ACCESS_TOKEN_TTL_SEC}; HttpOnly; SameSite=Lax${secureFlag}`,
+    `3am_refresh_token=${encodeURIComponent(refreshToken)}; Path=/; Max-Age=${REFRESH_TOKEN_TTL_SEC}; HttpOnly; SameSite=Lax${secureFlag}`
+  ]);
+}
+
+function clearAuthCookies(res) {
+  res.setHeader('Set-Cookie', [
+    '3am_access_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax',
+    '3am_refresh_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
+  ]);
+}
+
+async function issueTokensForOwl(owlDoc) {
+  const jti = crypto.randomBytes(16).toString('hex');
+  const accessToken = signJwt(
+    { sub: String(owlDoc._id), sessionId: owlDoc.sessionId, alias: owlDoc.alias, type: 'access' },
+    JWT_ACCESS_SECRET,
+    ACCESS_TOKEN_TTL_SEC
+  );
+  const refreshToken = signJwt(
+    { sub: String(owlDoc._id), sessionId: owlDoc.sessionId, jti, type: 'refresh' },
+    JWT_REFRESH_SECRET,
+    REFRESH_TOKEN_TTL_SEC
+  );
+
+  const tokenHash = hashSecretToken(refreshToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SEC * 1000);
+
+  const freshDoc = await NightOwl.findById(owlDoc._id).select('+refreshTokens');
+  if (freshDoc) {
+    const now = new Date();
+    const validTokens = (freshDoc.refreshTokens || []).filter(t => t.expiresAt && t.expiresAt > now).slice(-4);
+    validTokens.push({ tokenHash, expiresAt, createdAt: now });
+    freshDoc.refreshTokens = validTokens;
+    await freshDoc.save();
+  }
+
+  return { accessToken, refreshToken, expiresIn: ACCESS_TOKEN_TTL_SEC };
+}
+
+const CITY_LOOKUP = {
+  'thane': { lat: 19.2183, lng: 72.9781 },
+  'mumbai': { lat: 19.0760, lng: 72.8777 },
+  'bangalore': { lat: 12.9716, lng: 77.5946 },
+  'bengaluru': { lat: 12.9716, lng: 77.5946 },
+  'pune': { lat: 18.5204, lng: 73.8567 },
+  'delhi': { lat: 28.6139, lng: 77.2090 },
+  'hyderabad': { lat: 17.3850, lng: 78.4867 }
+};
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const sanitizeStr = (s, max = 160) => String(s || '').replace(/[<>]/g, '').trim().substring(0, max);
+    const rawAlias = sanitizeStr(req.body.alias, 24).replace(/^@+/, '');
+    const email = sanitizeStr(req.body.email, 80).toLowerCase();
+    const password = String(req.body.password || '');
+    const city = sanitizeStr(req.body.city, 40) || 'Thane';
+    const bio = sanitizeStr(req.body.bio, 160) || 'Hunting late night vibes at 3 AM 🌙';
+    const avatarEmoji = sanitizeStr(req.body.avatarEmoji, 8) || '🦉';
+    const auraType = ['grind', 'exam', 'vibe', 'gaming'].includes(req.body.auraType) ? req.body.auraType : 'vibe';
+    const interests = Array.isArray(req.body.interests) && req.body.interests.length
+      ? req.body.interests.slice(0, 5).map(i => sanitizeStr(i, 24))
+      : ['late-drives', 'music', 'coding'];
+
+    if (!rawAlias || rawAlias.length < 2) {
+      return res.status(400).json({ error: 'Please choose an @alias (at least 2 characters).' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    const existingRegistered = await NightOwl.findOne({
+      isRegisteredAccount: true,
+      $or: [
+        { alias: new RegExp(`^${rawAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        ...(email ? [{ email }] : [])
+      ]
+    });
+
+    if (existingRegistered) {
+      return res.status(409).json({ error: 'That @alias or email is already claimed. Log in instead!' });
+    }
+
+    const { salt, hash } = hashPassword(password);
+    const sessionId = 'owl_' + crypto.randomBytes(12).toString('hex');
+    const coords = CITY_LOOKUP[city.toLowerCase()] || CITY_LOOKUP.thane;
+    const jitterLat = coords.lat + (Math.random() - 0.5) * 0.014;
+    const jitterLng = coords.lng + (Math.random() - 0.5) * 0.014;
+
+    const owl = await NightOwl.create({
+      alias: rawAlias,
+      email,
+      passwordHash: hash,
+      passwordSalt: salt,
+      isRegisteredAccount: true,
+      sessionId,
+      bio,
+      avatarEmoji,
+      city,
+      auraType,
+      interests,
+      beverage: '☕ Cold Brew',
+      statusText: bio,
+      coordinates: { lat: jitterLat, lng: jitterLng },
+      isOnline: true,
+      checkedInAt: new Date(),
+      lastActiveAt: new Date(),
+      sunriseExpiresAt: null
+    });
+
+    const tokens = await issueTokensForOwl(owl);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const cleanOwl = owl.toObject();
+    delete cleanOwl.passwordHash;
+    delete cleanOwl.passwordSalt;
+    delete cleanOwl.refreshTokens;
+
+    broadcastSSE('owl-joined', cleanOwl);
+    res.status(201).json({
+      user: cleanOwl,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const identifier = String(req.body.identifier || req.body.email || req.body.alias || '').trim().replace(/^@+/, '');
+    const password = String(req.body.password || '');
+
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Enter your @alias (or email) and password.' });
+    }
+
+    const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const owl = await NightOwl.findOne({
+      $or: [
+        { email: identifier.toLowerCase() },
+        { alias: new RegExp(`^${escaped}$`, 'i') }
+      ]
+    }).select('+passwordHash +passwordSalt +refreshTokens');
+
+    if (!owl || !owl.passwordHash || !owl.passwordSalt) {
+      return res.status(401).json({ error: 'Account not found or invalid credentials. Create an account first!' });
+    }
+
+    const { hash } = hashPassword(password, owl.passwordSalt);
+    if (hash !== owl.passwordHash) {
+      return res.status(401).json({ error: 'Incorrect password. Try again!' });
+    }
+
+    owl.isOnline = true;
+    owl.checkedInAt = new Date();
+    owl.lastActiveAt = new Date();
+    owl.sunriseExpiresAt = null;
+    await owl.save();
+
+    const tokens = await issueTokensForOwl(owl);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const cleanOwl = owl.toObject();
+    delete cleanOwl.passwordHash;
+    delete cleanOwl.passwordSalt;
+    delete cleanOwl.refreshTokens;
+
+    broadcastSSE('owl-joined', cleanOwl);
+    res.json({
+      user: cleanOwl,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const incomingRefresh = req.body.refreshToken || cookies['3am_refresh_token'];
+    if (!incomingRefresh) {
+      return res.status(401).json({ error: 'No refresh token provided' });
+    }
+
+    const payload = verifyJwt(incomingRefresh, JWT_REFRESH_SECRET);
+    if (!payload || payload.type !== 'refresh' || !payload.sub) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const owl = await NightOwl.findById(payload.sub).select('+refreshTokens');
+    if (!owl) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: 'Account no longer exists' });
+    }
+
+    const incomingHash = hashSecretToken(incomingRefresh);
+    const hasValidToken = (owl.refreshTokens || []).some(
+      t => t.tokenHash === incomingHash && (!t.expiresAt || t.expiresAt > new Date())
+    );
+    if (!hasValidToken) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: 'Refresh token revoked or rotated' });
+    }
+
+    // Rotate refresh token: remove consumed token hash and issue new pair
+    owl.refreshTokens = (owl.refreshTokens || []).filter(t => t.tokenHash !== incomingHash);
+    owl.lastActiveAt = new Date();
+    owl.isOnline = true;
+    await owl.save();
+
+    const tokens = await issueTokensForOwl(owl);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const cleanOwl = owl.toObject();
+    delete cleanOwl.passwordHash;
+    delete cleanOwl.passwordSalt;
+    delete cleanOwl.refreshTokens;
+
+    res.json({
+      user: cleanOwl,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const incomingRefresh = req.body.refreshToken || cookies['3am_refresh_token'];
+    const { sessionId } = req.body;
+
+    if (incomingRefresh) {
+      const payload = verifyJwt(incomingRefresh, JWT_REFRESH_SECRET);
+      if (payload?.sub) {
+        const incomingHash = hashSecretToken(incomingRefresh);
+        const owl = await NightOwl.findById(payload.sub).select('+refreshTokens');
+        if (owl) {
+          owl.refreshTokens = (owl.refreshTokens || []).filter(t => t.tokenHash !== incomingHash);
+          owl.isOnline = false;
+          await owl.save();
+        }
+      }
+    } else if (sessionId) {
+      await NightOwl.findOneAndUpdate({ sessionId }, { isOnline: false });
+    }
+
+    clearAuthCookies(res);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const cookies = parseCookies(req);
+    const token = bearer || cookies['3am_access_token'];
+
+    if (token) {
+      const payload = verifyJwt(token, JWT_ACCESS_SECRET);
+      if (payload?.sub) {
+        const owl = await NightOwl.findById(payload.sub).lean();
+        if (owl) {
+          return res.json({ authenticated: true, user: owl });
+        }
+      }
+    }
+
+    if (req.query.sessionId) {
+      const owl = await NightOwl.findOne({ sessionId: req.query.sessionId }).lean();
+      if (owl) {
+        return res.json({ authenticated: true, user: owl });
+      }
+    }
+
+    res.status(401).json({ authenticated: false });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 function deterministicFuzz(idStr, coord, scale = 0.018) {
   let hash = 0;
@@ -294,6 +667,7 @@ app.post('/api/checkin', async (req, res) => {
 
     const sanitizeStr = (s, max = 160) => String(s || '').replace(/[<>]/g, '').trim().substring(0, max);
     const sessionId = sanitizeStr(incomingSessionId, 64) || ('owl_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36));
+    const existingAccount = await NightOwl.findOne({ sessionId }).lean();
     const sunrise = new Date();
     sunrise.setHours(sunrise.getHours() + 6);
 
@@ -301,10 +675,10 @@ app.post('/api/checkin', async (req, res) => {
       { sessionId },
       {
         sessionId,
-        alias: sanitizeStr(alias, 28) || 'NightOwl',
+        alias: sanitizeStr(alias, 28) || existingAccount?.alias || 'NightOwl',
         bio: sanitizeStr(bio, 160),
         pronouns: sanitizeStr(pronouns, 24),
-        avatarEmoji: sanitizeStr(avatarEmoji, 8) || '🦉',
+        avatarEmoji: sanitizeStr(avatarEmoji, 8) || existingAccount?.avatarEmoji || '🦉',
         profileType: profileType === 'closed' ? 'closed' : 'open',
         interests: Array.isArray(interests) ? interests.slice(0, 5).map(i => sanitizeStr(i, 24)) : [],
         lookingFor: Array.isArray(lookingFor) ? lookingFor.slice(0, 5).map(i => sanitizeStr(i, 24)) : [],
@@ -319,7 +693,7 @@ app.post('/api/checkin', async (req, res) => {
         isOnline: true,
         checkedInAt: new Date(),
         lastActiveAt: new Date(),
-        sunriseExpiresAt: sunrise
+        sunriseExpiresAt: existingAccount?.isRegisteredAccount ? null : sunrise
       },
       { new: true, upsert: true }
     );

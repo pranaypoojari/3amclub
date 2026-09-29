@@ -1442,4 +1442,549 @@ button {
   background: linear-gradient(180deg, rgba(139, 92, 246, 0.08), rgba(19, 19, 26, 0.85)) !important;
 }
 
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  REACTBITS INTERACTIVE GENZ LANDING PAGE & JWT AUTH PORTAL          */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+#landing-screen {
+  position: fixed;
+  inset: 0;
+  background: #07070b;
+  color: #f4f4f6;
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+  z-index: 200;
+}
+
+#landing-screen.active {
+  display: flex;
+}
+
+#landing-aurora-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.landing-navbar {
+  position: relative;
+  z-index: 10;
+  height: 60px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(11, 11, 16, 0.78);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+  flex-shrink: 0;
+}
+
+.landing-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-logo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f4f4f6;
+}
+
+.genz-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.22), rgba(16, 185, 129, 0.18));
+  border: 1px solid rgba(167, 139, 250, 0.42);
+  color: #ddd6fe;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.landing-nav-links a {
+  color: #a1a1aa;
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 500;
+  transition: color 0.18s ease;
+}
+
+.landing-nav-links a:hover {
+  color: #f4f4f6;
+}
+
+.landing-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-sm {
+  padding: 7px 14px !important;
+  font-size: 0.78rem !important;
+  border-radius: 9px !important;
+}
+
+.landing-scroll-container {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px 28px 60px;
+  scroll-behavior: smooth;
+}
+
+.landing-hero-section {
+  max-width: 1220px;
+  margin: 0 auto 44px;
+  display: grid;
+  grid-template-columns: 1.18fr 0.92fr;
+  gap: 34px;
+  align-items: center;
+}
+
+.hero-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-size: 0.73rem;
+  color: #a7f3d0;
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 16px;
+}
+
+.landing-hero-title {
+  font-size: clamp(2.1rem, 4vw, 3.35rem);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 16px;
+  color: #ffffff;
+}
+
+.text-gradient-violet {
+  background: linear-gradient(90deg, #c4b5fd, #8b5cf6, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-emerald {
+  background: linear-gradient(90deg, #34d399, #10b981, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.landing-hero-tagline {
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: #a1a1aa;
+  margin: 0 0 22px;
+  max-width: 600px;
+}
+
+.landing-hero-tagline code {
+  background: rgba(139, 92, 246, 0.16);
+  color: #c4b5fd;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 0.84rem;
+}
+
+.landing-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.landing-stat-box {
+  background: rgba(19, 19, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f4f4f6;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.stat-lbl {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  margin-top: 3px;
+}
+
+/* ReactBits Infinite Marquee */
+.landing-marquee-wrap {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 11px;
+  background: rgba(19, 19, 28, 0.65);
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  padding: 9px 0;
+  position: relative;
+}
+
+.landing-marquee-track {
+  display: flex;
+  gap: 14px;
+  width: max-content;
+  animation: landingMarqueeScroll 28s linear infinite;
+}
+
+.landing-marquee-wrap:hover .landing-marquee-track {
+  animation-play-state: paused;
+}
+
+.marquee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #d4d4d8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+@keyframes landingMarqueeScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ReactBits Spotlight Auth Portal Card */
+.auth-portal-card {
+  position: relative;
+  background: radial-gradient(
+    500px circle at var(--mouse-x, 50%) var(--mouse-y, 20%),
+    rgba(139, 92, 246, 0.16),
+    rgba(17, 17, 25, 0.94) 65%
+  );
+  border: 1px solid rgba(167, 139, 250, 0.36);
+  border-radius: 20px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.68), 0 0 32px rgba(139, 92, 246, 0.14);
+  backdrop-filter: blur(20px);
+}
+
+.auth-portal-badge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.jwt-shield-pill {
+  font-size: 0.68rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.genz-mini-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #c4b5fd;
+}
+
+.auth-portal-heading {
+  font-size: 1.35rem;
+  margin: 0 0 4px;
+  color: #ffffff;
+}
+
+.auth-portal-sub {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin: 0 0 14px;
+}
+
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: rgba(9, 9, 13, 0.75);
+  padding: 4px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 14px;
+}
+
+.auth-mode-tab {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.auth-mode-tab.active {
+  background: #8b5cf6;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+}
+
+.auth-error-banner {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  padding: 8px 11px;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  margin-bottom: 10px;
+}
+
+.auth-field {
+  margin-bottom: 9px;
+}
+
+.auth-field label {
+  display: block;
+  font-size: 0.71rem;
+  color: #a1a1aa;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.auth-field input,
+.auth-field select {
+  width: 100%;
+  padding: 8px 11px !important;
+  font-size: 0.81rem !important;
+  border-radius: 9px !important;
+  margin-bottom: 0 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f4f4f6 !important;
+}
+
+.auth-field input:focus,
+.auth-field select:focus {
+  border-color: #8b5cf6 !important;
+  outline: none;
+}
+
+.auth-emoji-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.auth-emoji-btn {
+  flex: 1;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.auth-emoji-btn.active {
+  background: rgba(139, 92, 246, 0.28);
+  border-color: #8b5cf6;
+  transform: scale(1.06);
+}
+
+.auth-submit-btn {
+  padding: 11px 14px !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  margin-top: 4px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 12px 0 10px;
+  color: #71717a;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.btn-guest-hunt {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn-guest-hunt:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #ecfdf5;
+}
+
+/* ReactBits 3D Tilted Bento Section */
+.landing-bento-section {
+  max-width: 1220px;
+  margin: 0 auto 44px;
+}
+
+.bento-section-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.bento-section-header h2 {
+  font-size: 1.85rem;
+  margin: 10px 0 6px;
+}
+
+.bento-section-header p {
+  color: #a1a1aa;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.bento-card {
+  position: relative;
+  background: radial-gradient(
+    420px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(139, 92, 246, 0.14),
+    rgba(17, 17, 25, 0.85) 65%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  padding: 22px;
+  transition: transform 0.16s ease, border-color 0.2s ease;
+}
+
+.bento-card:hover {
+  border-color: rgba(167, 139, 250, 0.42);
+}
+
+.bento-wide {
+  grid-column: span 2;
+}
+
+.bento-icon {
+  font-size: 1.65rem;
+  margin-bottom: 8px;
+}
+
+.bento-tag {
+  font-size: 0.66rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #a78bfa;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.bento-card h3 {
+  font-size: 1.08rem;
+  margin: 0 0 8px;
+  color: #f4f4f6;
+}
+
+.bento-card p {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #a1a1aa;
+  margin: 0;
+}
+
+.landing-footer {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: #a1a1aa;
+}
+
+@media (max-width: 960px) {
+  .landing-hero-section {
+    grid-template-columns: 1fr;
+  }
+  .landing-nav-links {
+    display: none;
+  }
+  .landing-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-wide {
+    grid-column: span 1;
+  }
+  .landing-scroll-container {
+    padding: 18px 14px 50px;
+  }
+  .landing-navbar {
+    padding: 0 14px;
+  }
+}
+
+
 

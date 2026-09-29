@@ -109,6 +109,232 @@
   </noscript>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  REACTBITS INTERACTIVE LANDING PAGE & JWT AUTH PORTAL       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="landing-screen" class="screen active">
+    <canvas id="landing-aurora-canvas"></canvas>
+
+    <!-- Top Sticky Landing Navbar -->
+    <nav class="landing-navbar">
+      <div class="landing-nav-left">
+        <span class="landing-logo decrypted-text">🎃 THE 3AM CLUB</span>
+        <span class="genz-badge-pill">⚡ BY GENZ • FOR GENZ</span>
+      </div>
+      <div class="landing-nav-links">
+        <a href="#how-it-works">How It Works</a>
+        <a href="#radar-cities">Live Radars</a>
+        <a href="#safety-architecture">Mutual Pin Privacy</a>
+      </div>
+      <div class="landing-nav-actions">
+        <button type="button" class="btn-outline btn-sm" id="nav-go-login">🔑 Log In</button>
+        <button type="button" class="btn-primary btn-sm btn-magnet" id="nav-go-signup">⚡ Start Hunting</button>
+      </div>
+    </nav>
+
+    <div class="landing-scroll-container">
+      <!-- HERO + INTERACTIVE AUTH SPLIT SECTION -->
+      <section class="landing-hero-section">
+        <div class="landing-hero-left">
+          <div class="hero-live-pill">
+            <span class="live-pulse-dot"></span>
+            <span>GATES OPEN 11:00 PM – 05:00 AM •</span>
+            <strong id="landing-online-count" data-countup="104" data-suffix="+ Owls Hunting">104+ Owls Hunting</strong>
+          </div>
+
+          <h1 class="landing-hero-title">
+            WIDE AWAKE AT <span class="text-gradient-violet decrypted-text">3 AM?</span><br>
+            STOP DOOMSCROLLING.<br>
+            <span class="text-gradient-emerald decrypted-text">START HUNTING.</span>
+          </h1>
+
+          <p class="landing-hero-tagline">
+            Built <strong>by GenZ, for GenZ</strong> — India's ephemeral midnight social radar. Match shared interests (<code>#late-drives</code>, <code>#coding</code>, <code>#music</code>), hop on spontaneous 3 AM cold-coffee runs, and unlock <strong>mutual-only live GPS pins</strong> before sunrise wipes the slate clean.
+          </p>
+
+          <!-- Live Stats Strip (ReactBits CountUp) -->
+          <div class="landing-stats-row">
+            <div class="landing-stat-box">
+              <div class="stat-num" data-countup="100" data-suffix="+">100+</div>
+              <div class="stat-lbl">Night Owls Awake</div>
+            </div>
+            <div class="landing-stat-box">
+              <div class="stat-num" data-countup="6" data-suffix=" Cities">6 Cities</div>
+              <div class="stat-lbl">Thane • BOM • BLR • PNQ</div>
+            </div>
+            <div class="landing-stat-box">
+              <div class="stat-num">🔒 100%</div>
+              <div class="stat-lbl">Mutual-Gated GPS Pins</div>
+            </div>
+            <div class="landing-stat-box">
+              <div class="stat-num">05:00 AM</div>
+              <div class="stat-lbl">Sunrise Auto-Wipe</div>
+            </div>
+          </div>
+
+          <!-- ReactBits Infinite Live Activity Marquee -->
+          <div class="landing-marquee-wrap">
+            <div class="landing-marquee-track">
+              <span class="marquee-chip">🚗 <b>@Kabir_Thane</b> offering a 2:30 AM sunroof drive at Hiranandani Estate</span>
+              <span class="marquee-chip">☕ <b>@Rhea_Bandra</b> down for 3 AM cold coffee near Carter Road</span>
+              <span class="marquee-chip">💻 <b>@Aarav_BLR</b> shipping AI side-projects till 4 AM in Indiranagar</span>
+              <span class="marquee-chip">🎧 <b>@Zoya_Pune</b> vibing to After Hours • matched on #music &amp; #late-drives</span>
+              <span class="marquee-chip">🦉 <b>@Dev_Mumbai</b> just sent ☕ Cheers to @Nisha (1.4 km away)</span>
+              <span class="marquee-chip">🚗 <b>@Kabir_Thane</b> offering a 2:30 AM sunroof drive at Hiranandani Estate</span>
+              <span class="marquee-chip">☕ <b>@Rhea_Bandra</b> down for 3 AM cold coffee near Carter Road</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: REACTBITS SPOTLIGHT AUTH PORTAL CARD -->
+        <div class="landing-hero-right">
+          <div class="auth-portal-card" id="auth-portal-card">
+            <div class="auth-portal-badge-row">
+              <span class="jwt-shield-pill">🔐 JWT Access + Refresh Token</span>
+              <span class="genz-mini-tag">BY GENZ • FOR GENZ</span>
+            </div>
+
+            <h2 class="auth-portal-heading" id="auth-portal-heading">Join Tonight's Hunt 🦉</h2>
+            <p class="auth-portal-sub" id="auth-portal-sub">Create your Night Owl account or log in to unlock the live 3 AM radar.</p>
+
+            <!-- Mode Switcher Tabs -->
+            <div class="auth-mode-tabs">
+              <button type="button" class="auth-mode-tab active" id="tab-auth-register" data-mode="register">
+                🦉 Create Account
+              </button>
+              <button type="button" class="auth-mode-tab" id="tab-auth-login" data-mode="login">
+                🔑 Log In
+              </button>
+            </div>
+
+            <div id="auth-error-banner" class="auth-error-banner hidden"></div>
+
+            <!-- REGISTER FORM -->
+            <form id="landing-register-form" class="auth-form">
+              <div class="form-row">
+                <div class="auth-field">
+                  <label>Your @Alias</label>
+                  <input type="text" id="reg-alias" placeholder="e.g. pranay_3am" maxlength="24" required>
+                </div>
+                <div class="auth-field">
+                  <label>City Radar</label>
+                  <select id="reg-city">
+                    <option value="Thane">Thane (Hiranandani / Upvan)</option>
+                    <option value="Mumbai">Mumbai (Bandra / Powai)</option>
+                    <option value="Bangalore">Bangalore (Indiranagar / HSR)</option>
+                    <option value="Pune">Pune (KP / Viman Nagar)</option>
+                    <option value="Delhi">Delhi NCR / Gurgaon</option>
+                    <option value="Hyderabad">Hyderabad (Jubilee / Gachibowli)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="auth-field">
+                  <label>Email</label>
+                  <input type="email" id="reg-email" placeholder="you@genz.club" required>
+                </div>
+                <div class="auth-field">
+                  <label>Password</label>
+                  <input type="password" id="reg-password" placeholder="Min 6 characters" minlength="6" required>
+                </div>
+              </div>
+
+              <div class="auth-field">
+                <label>Pick Your Night Owl Avatar &amp; Vibe</label>
+                <div class="auth-emoji-strip" id="reg-emoji-strip">
+                  <button type="button" class="auth-emoji-btn active" data-emoji="🦉">🦉</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🦊">🦊</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🐺">🐺</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🐈‍⬛">🐈‍⬛</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🦇">🦇</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="⚡">⚡</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🌙">🌙</button>
+                  <button type="button" class="auth-emoji-btn" data-emoji="🎧">🎧</button>
+                </div>
+                <input type="hidden" id="reg-avatar" value="🦉">
+              </div>
+
+              <div class="auth-field">
+                <label>Tonight's Status / What You're Hunting For</label>
+                <input type="text" id="reg-bio" placeholder="e.g. Down for a 2:30 AM sunroof drive & cold coffee ☕" maxlength="120">
+              </div>
+
+              <button type="submit" class="btn-primary w-100 btn-magnet auth-submit-btn" id="reg-submit-btn">
+                🚀 Create Account &amp; Start Hunting
+              </button>
+            </form>
+
+            <!-- LOGIN FORM -->
+            <form id="landing-login-form" class="auth-form hidden">
+              <div class="auth-field">
+                <label>@Alias or Email</label>
+                <input type="text" id="login-identifier" placeholder="@pranay_3am or you@genz.club" required>
+              </div>
+              <div class="auth-field">
+                <label>Password</label>
+                <input type="password" id="login-password" placeholder="Your password" required>
+              </div>
+              <button type="submit" class="btn-primary w-100 btn-magnet auth-submit-btn" id="login-submit-btn">
+                ⚡ Log In &amp; Start Hunting
+              </button>
+            </form>
+
+            <div class="auth-divider"><span>OR INSTANT PREVIEW</span></div>
+
+            <button type="button" class="btn-guest-hunt w-100" id="btn-instant-demo-hunt">
+              ⚡ Quick Guest Pass (1-Click Demo Hunt with JWT) →
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- REACTBITS 3D TILTED BENTO GRID SECTION -->
+      <section class="landing-bento-section" id="how-it-works">
+        <div class="bento-section-header">
+          <span class="genz-badge-pill">⚡ ENGINEERED FOR LATE NIGHTS</span>
+          <h2 class="decrypted-text">How The 3AM Hunt Works</h2>
+          <p>Zero clout-chasing. Zero daytime noise. Pure midnight serendipity with strict privacy controls.</p>
+        </div>
+
+        <div class="bento-grid" id="safety-architecture">
+          <div class="bento-card bento-wide">
+            <div class="bento-icon">🗺️</div>
+            <div class="bento-tag">MUTUAL-ONLY RADAR</div>
+            <h3>Exact GPS Pins Stay Locked (🔒) Until You Both Follow</h3>
+            <p>Non-mutuals only see an approximate neighborhood aura (~2 km fuzzed server-side). Once you both follow each other or accept a DM request, exact map pins unlock automatically.</p>
+          </div>
+
+          <div class="bento-card">
+            <div class="bento-icon">🚗</div>
+            <div class="bento-tag">NIGHT RIDES &amp; CHAI</div>
+            <h3>Spontaneous 2 AM Drives</h3>
+            <p>Offering extra seats on a late-night sunroof drive or looking for a 3 AM cold-coffee crew? Drop a ride pin and squad up in real time.</p>
+          </div>
+
+          <div class="bento-card">
+            <div class="bento-icon">💬</div>
+            <div class="bento-tag">ANTI-CREEP DMs</div>
+            <h3>1-Shot Message Requests</h3>
+            <p>Like Instagram, non-mutuals get strictly <strong>one</strong> message request attempt and <strong>one</strong> ☕ Cheers clink. Accept to move them to your Primary Inbox, or Decline/Block in one tap.</p>
+          </div>
+
+          <div class="bento-card bento-wide" id="radar-cities">
+            <div class="bento-icon">🌅</div>
+            <div class="bento-tag">5:00 AM EPHEMERAL WIPE + JWT PERSISTENCE</div>
+            <h3>Tonight's Thoughts Evaporate at Sunrise. Your Crew Stays.</h3>
+            <p>All 3 AM confessions, ride pins, and temporary statuses auto-wipe at 5:00 AM IST while your registered Night Owl profile, mutual followers, and rotating JWT session stay ready for tomorrow night.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="landing-footer">
+        <div>🎃 <strong>THE 3AM CLUB</strong> — Built By GenZ, For GenZ • Secured with Rotating JWT Access &amp; Refresh Tokens</div>
+        <div style="opacity:0.65;font-size:0.78rem;">Active across Thane • Mumbai • Bangalore • Pune • Delhi NCR • Hyderabad</div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  DAYTIME VAULT SCREEN (5:00 AM – 11:00 PM)                  -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div id="vault-screen" class="screen">
@@ -138,12 +364,12 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  INSTAGRAM-STYLE 5-TAB SWIPEABLE 3AM CLUB PORTAL            -->
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <div id="club-screen" class="screen active">
+  <div id="club-screen" class="screen">
     
     <!-- Top Compact Header -->
     <header class="club-header">
       <div class="header-left">
-        <div class="logo-small">🎃 THE 3AM CLUB</div>
+        <div class="logo-small" id="brand-home-trigger" style="cursor:pointer;" title="View Landing Page">🎃 THE 3AM CLUB</div>
         <div class="online-status-badge" title="Active Night Owls Online">
           <span class="live-pulse-dot"></span>
           <span id="online-count-val">100</span>
@@ -151,10 +377,12 @@
         </div>
       </div>
       <div class="header-right">
+        <span id="header-user-badge" class="header-pill-btn" title="Authenticated JWT Session" style="border-color:rgba(16,185,129,0.35);color:#6ee7b7;">🔐 @NightOwl</span>
         <button id="btn-rain" class="header-pill-btn" title="Midnight Rain Ambience">🌧️ Rain</button>
         <button id="btn-lofi" class="header-pill-btn" title="3AM Lofi Radio">🎵 Lofi</button>
         <div class="live-clock" id="live-clock">03:00:00</div>
         <button id="locate-me-btn" class="btn-icon" title="Center on My GPS">📍</button>
+        <button id="btn-header-logout" class="btn-icon" title="Log Out / Back to Landing">🚪</button>
         <button id="lock-btn" class="btn-icon" title="View Countdown Vault">🔒</button>
       </div>
     </header>
@@ -530,5 +758,13 @@
   <script src="/js/reactbits.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/app.js"></script>
+
+  <!-- Vercel Web Analytics (@vercel/analytics) & Speed Insights (@vercel/speed-insights) -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
+  <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>

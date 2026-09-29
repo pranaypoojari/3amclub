@@ -2,6 +2,19 @@ const mongoose = require('mongoose');
 
 const nightOwlSchema = new mongoose.Schema({
   alias: { type: String, required: true, maxlength: 24 },
+  email: { type: String, lowercase: true, trim: true, default: '' },
+  passwordHash: { type: String, select: false, default: '' },
+  passwordSalt: { type: String, select: false, default: '' },
+  refreshTokens: {
+    type: [{
+      tokenHash: String,
+      expiresAt: Date,
+      createdAt: { type: Date, default: Date.now }
+    }],
+    select: false,
+    default: []
+  },
+  isRegisteredAccount: { type: Boolean, default: false },
   sessionId: { type: String, required: true, unique: true },
   bio: { type: String, maxlength: 160, default: '' },
   age: { type: Number, min: 16, max: 99 },
