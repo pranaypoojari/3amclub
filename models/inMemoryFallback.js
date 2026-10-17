@@ -35,6 +35,17 @@ function wrapDoc(raw, store) {
   if (!raw) return null;
   if (!raw._id) raw._id = genId();
   if (!raw.createdAt) raw.createdAt = new Date();
+  if (raw.joinedOwls === undefined) raw.joinedOwls = [];
+  if (raw.reactions === undefined) raw.reactions = { fire: 0, clink: 0, skull: 0, hug: 0 };
+  if (raw.replies === undefined) raw.replies = [];
+  if (raw.followersCount === undefined) raw.followersCount = 0;
+  if (raw.followingCount === undefined) raw.followingCount = 0;
+  if (raw.clinksReceived === undefined) raw.clinksReceived = 0;
+  if (raw.blockedOwlIds === undefined) raw.blockedOwlIds = [];
+  if (raw.status === undefined) {
+    if (raw.fromArea || raw.rideType) raw.status = 'active';
+    else if (raw.spot || raw.activity) raw.status = 'open';
+  }
   if (typeof raw.save !== 'function') {
     Object.defineProperty(raw, 'save', {
       enumerable: false,
@@ -175,6 +186,19 @@ function patchModel(Model) {
       return null;
     })();
     return createChainable(p);
+  };
+
+  Model.findOneAndDelete = function (query = {}) {
+    const idx = store.findIndex(d => matchQuery(d, query));
+    if (idx >= 0) {
+      const [removed] = store.splice(idx, 1);
+      return createChainable(Promise.resolve(removed));
+    }
+    return createChainable(Promise.resolve(null));
+  };
+
+  Model.findByIdAndDelete = function (id) {
+    return Model.findOneAndDelete({ _id: String(id) });
   };
 
   Model.findByIdAndUpdate = function (id, update = {}, opts = {}) {

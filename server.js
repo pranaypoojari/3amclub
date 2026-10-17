@@ -44,7 +44,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '200kb' }));
 
 // Dynamic SEO Sitemap & Robots routes
@@ -180,6 +180,13 @@ async function connectDB() {
   }
 }
 
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB connection lost. Reconnecting or using fallback...');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB runtime connection error:', err.message);
+});
+
 let bootPromise = null;
 function ensureBooted() {
   if (!bootPromise) {
@@ -190,14 +197,34 @@ function ensureBooted() {
     })().catch(err => {
       console.error('Boot error:', err);
       bootPromise = null;
+      throw err;
     });
   }
   return bootPromise;
 }
 
 app.use('/api', async (req, res, next) => {
-  await ensureBooted();
-  next();
+  try {
+    await ensureBooted();
+    next();
+  } catch (err) {
+    if (!usingInMemoryStore) {
+      console.log('Activating emergency in-memory store after boot exception...');
+      attachInMemoryFallback([
+        NightOwl,
+        Follow,
+        LateNightRide,
+        Hangout,
+        MidnightClink,
+        Confession3AM,
+        NightlyCapsule,
+        MidnightWhisper
+      ]);
+      usingInMemoryStore = true;
+      return next();
+    }
+    res.status(503).json({ error: 'Database service initializing, please retry momentarily.' });
+  }
 });
 
 
@@ -206,7 +233,8 @@ app.use('/api', async (req, res, next) => {
 // ----------------------------------------------------
 const ipHits = new Map();
 function writeRateLimit(req, res, next) {
-  const ip = req.ip || req.connection?.remoteAddress || 'local';
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (forwarded ? String(forwarded).split(',')[0].trim() : null) || req.ip || req.connection?.remoteAddress || 'local';
   const now = Date.now();
   const entry = ipHits.get(ip) || { count: 0, resetAt: now + 60000 };
   if (now > entry.resetAt) {
@@ -233,6 +261,9 @@ app.get(['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'], (r
 // ----------------------------------------------------
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || '3amclub_genz_access_secret_key_2026_v1';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || '3amclub_genz_refresh_secret_key_2026_v1';
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET)) {
+  console.warn('⚠️ [SECURITY NOTICE] JWT secrets not configured in environment variables. Add JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to Vercel Environment Variables.');
+}
 const ACCESS_TOKEN_TTL_SEC = 15 * 60; // 15 minutes
 const REFRESH_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
 
@@ -1526,6 +1557,15 @@ app.post('/api/messages', async (req, res) => {
     const senderId = sender ? String(sender._id) : String(fromOwlId || '');
     if (!senderId) return res.status(401).json({ error: 'Check in first to send messages' });
 
+    if (senderId === String(toOwlId)) {
+      return res.status(400).json({ error: 'Cannot send message to yourself' });
+    }
+
+    const recipient = await NightOwl.findById(toOwlId);
+    if (recipient && Array.isArray(recipient.blockedOwlIds) && recipient.blockedOwlIds.map(String).includes(senderId)) {
+      return res.status(403).json({ error: 'Cannot message this user' });
+    }
+
     const isMutual = await areMutualFollowers(senderId, toOwlId);
 
     // Instagram Rule: If NOT mutual followers, user can only send 1 message request attempt!
@@ -1657,10 +1697,19 @@ function gracefulShutdown(signal) {
   }
 }
 
+app.use((err, req, res, next) => {
+  console.error('Express Error Handler:', err);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Promise Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
 });
 
 module.exports = app;
